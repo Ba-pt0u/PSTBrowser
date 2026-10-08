@@ -24,15 +24,13 @@
         <DockPanel x:Name="Body" Visibility="Collapsed">
             <Border DockPanel.Dock="Top" Padding="14,10,14,8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
                 <StackPanel>
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
-                            <Button x:Name="BtnBack" Content="← Retour" Style="{StaticResource ToolButton}" Click="Back_Click" Visibility="Collapsed" ToolTip="Revenir au message parent"/>
-                            <Button Content="En-têtes" Style="{StaticResource ToolButton}" Click="Headers_Click" ToolTip="Afficher les en-têtes Internet et les propriétés techniques"/>
-                            <Button Content="Exporter .eml" Style="{StaticResource ToolButton}" Click="ExportEml_Click" ToolTip="Enregistrer ce message au format .eml (lisible par tout logiciel de messagerie)"/>
-                            <Button x:Name="BtnPopOut" Content="Nouvelle fenêtre" Style="{StaticResource ToolButton}" Click="PopOut_Click" Margin="0"/>
-                        </StackPanel>
-                        <TextBlock x:Name="TxtSubject" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,10,6"/>
-                    </DockPanel>
+                    <WrapPanel Margin="0,0,0,8">
+                        <Button x:Name="BtnBack" Content="← Message parent" Style="{StaticResource ToolButton}" Click="Back_Click" Visibility="Collapsed" ToolTip="Revenir au message qui contient ce message joint"/>
+                        <Button Content="En-têtes" Style="{StaticResource ToolButton}" Click="Headers_Click" ToolTip="Afficher les en-têtes Internet et les propriétés techniques"/>
+                        <Button Content="Exporter .eml" Style="{StaticResource ToolButton}" Click="ExportEml_Click" ToolTip="Enregistrer ce message au format .eml (lisible par tout logiciel de messagerie)"/>
+                        <Button x:Name="BtnPopOut" Content="Nouvelle fenêtre" Style="{StaticResource ToolButton}" Click="PopOut_Click"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="TxtSubject" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -45,7 +43,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Text="De" Style="{StaticResource HeaderLabel}"/>
+                        <TextBlock Grid.Row="0" Text="De" Style="{StaticResource HeaderLabel}" x:Name="LblFrom"/>
                         <TextBox Grid.Row="0" Grid.Column="1" x:Name="TxtFrom" Style="{StaticResource HeaderValue}" FontWeight="SemiBold"/>
                         <TextBlock Grid.Row="1" Text="À" Style="{StaticResource HeaderLabel}" x:Name="LblTo"/>
                         <TextBox Grid.Row="1" Grid.Column="1" x:Name="TxtTo" Style="{StaticResource HeaderValue}"/>

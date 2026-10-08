@@ -34,7 +34,7 @@ namespace PstBrowser.Core.Viewer
             "html,body{background:#fff;color:#1f1f1f;}" +
             "body{font-family:'Segoe UI',Calibri,Arial,sans-serif;font-size:14px;margin:12px 16px;word-wrap:break-word;}" +
             "mark.pl-hit{background:#ffe066;color:inherit;padding:0 1px;border-radius:2px;}" +
-            ".pl-text{white-space:pre-wrap;font-family:Consolas,'Cascadia Mono',monospace;font-size:13px;line-height:1.45;}" +
+            ".pl-text{white-space:pre-wrap;font-family:Calibri,'Segoe UI',sans-serif;font-size:15px;line-height:1.4;}" +
             ".pl-note{color:#666;font-style:italic;font-family:'Segoe UI',sans-serif;font-size:12px;margin-bottom:8px;}" +
             "img[data-pl-blocked]{outline:1px dashed #bbb;min-width:16px;min-height:16px;}";
 

@@ -56,6 +56,10 @@ namespace PstBrowser.App
             if (_settings.Maximized) WindowState = WindowState.Maximized;
             ColTree.Width = new GridLength(Math.Max(150, _settings.TreeWidth));
 
+            ApplyReaderLayout(_settings.ReaderBottom ?? SystemParameters.PrimaryScreenWidth < 1600);
+            DateFrom.Loaded += (_, __) => SetDateWatermark(DateFrom);
+            DateTo.Loaded += (_, __) => SetDateWatermark(DateTo);
+
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
             _timer.Tick += Timer_Tick;
             _timer.Start();
@@ -64,6 +68,63 @@ namespace PstBrowser.App
             _selectionTimer.Tick += (_, __) => { _selectionTimer.Stop(); ShowSelectedMessage(); };
 
             FillRecent();
+        }
+
+        // ================================================================== layout
+
+        private bool _readerBottom;
+
+        /// <summary>Places the reading pane to the right of the message list, or below it.</summary>
+        private void ApplyReaderLayout(bool bottom)
+        {
+            _readerBottom = bottom;
+            ContentGrid.RowDefinitions.Clear();
+            ContentGrid.ColumnDefinitions.Clear();
+            if (bottom)
+            {
+                ContentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(2, GridUnitType.Star), MinHeight = 120 });
+                ContentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(5) });
+                ContentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(3, GridUnitType.Star), MinHeight = 150 });
+                Grid.SetRow(ListPanel, 0); Grid.SetRow(ReaderSplitter, 1); Grid.SetRow(Viewer, 2);
+                Grid.SetColumn(ListPanel, 0); Grid.SetColumn(ReaderSplitter, 0); Grid.SetColumn(Viewer, 0);
+                ReaderSplitter.ResizeDirection = GridResizeDirection.Rows;
+                ReaderSplitter.Width = double.NaN;
+                ReaderSplitter.Height = 5;
+                BtnLayout.Content = "Lecture à droite";
+            }
+            else
+            {
+                ContentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 300 });
+                ContentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
+                ContentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 300 });
+                Grid.SetColumn(ListPanel, 0); Grid.SetColumn(ReaderSplitter, 1); Grid.SetColumn(Viewer, 2);
+                Grid.SetRow(ListPanel, 0); Grid.SetRow(ReaderSplitter, 0); Grid.SetRow(Viewer, 0);
+                ReaderSplitter.ResizeDirection = GridResizeDirection.Columns;
+                ReaderSplitter.Height = double.NaN;
+                ReaderSplitter.Width = 5;
+                BtnLayout.Content = "Lecture en bas";
+            }
+        }
+
+        private void Layout_Click(object sender, RoutedEventArgs e)
+        {
+            ApplyReaderLayout(!_readerBottom);
+            _settings.ReaderBottom = _readerBottom;
+            _settings.Save();
+        }
+
+        /// <summary>The DatePicker placeholder is not localised by WPF: replace it.</summary>
+        private static void SetDateWatermark(DatePicker dp)
+        {
+            try
+            {
+                if (dp.Template.FindName("PART_TextBox", dp) is System.Windows.Controls.Primitives.DatePickerTextBox tb)
+                {
+                    tb.ApplyTemplate();
+                    if (tb.Template.FindName("PART_Watermark", tb) is ContentControl wm) wm.Content = "jj/mm/aaaa";
+                }
+            }
+            catch { }
         }
 
         // ================================================================== workspace
@@ -346,7 +407,7 @@ namespace PstBrowser.App
             var all = new TreeNode { Key = "all", Kind = NodeKind.All, Name = "Toutes les boîtes", Count = mailboxes.Sum(m => m.MessageCount), IsExpanded = true };
             foreach (var mb in mailboxes)
             {
-                var mbNode = new TreeNode { Key = "mb:" + mb.Id, Kind = NodeKind.Mailbox, MailboxId = mb.Id, Name = mb.Name, Count = mb.MessageCount };
+                var mbNode = new TreeNode { Key = "mb:" + mb.Id, Kind = NodeKind.Mailbox, MailboxId = mb.Id, Name = mb.Name, Count = mb.MessageCount, IsExpanded = true };
                 foreach (var f in ws.GetFolderTree(mb.Id, hideEmpty)) mbNode.Children.Add(ToNode(f, mb.Id));
                 all.Children.Add(mbNode);
             }
@@ -498,7 +559,9 @@ namespace PstBrowser.App
             if (!append) _rows.Clear();
             foreach (var r in res.Rows) _rows.Add(new RowItem(r));
             var shown = _rows.Count;
-            TxtResults.Text = $"{description} — {res.Total:N0} élément(s)" + (shown < res.Total ? $" ({shown:N0} affichés)" : "") + $"  ·  {res.ElapsedMs} ms";
+            TxtResults.Text = $"{description} — {res.Total:N0} élément(s)" + (shown < res.Total ? $" ({shown:N0} affichés)" : "") +
+                              (req.HideDuplicates ? ", doublons masqués" : "") + $"  ·  {res.ElapsedMs} ms";
+            TxtResults.ToolTip = TxtResults.Text;
             BtnMore.Visibility = res.HasMore ? Visibility.Visible : Visibility.Collapsed;
             if (!append)
             {

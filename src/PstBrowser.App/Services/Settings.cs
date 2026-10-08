@@ -16,6 +16,8 @@ namespace PstBrowser.App.Services
         public double TreeWidth { get; set; } = 270;
         public double ListWidthRatio { get; set; } = 0.5;
         public bool HideEmptyFolders { get; set; } = true;
+        /// <summary>Reading pane below the list (null = automatic: below on small screens).</summary>
+        public bool? ReaderBottom { get; set; }
 
         private static string FilePath => Path.Combine(App.LocalDataFolder, "settings.json");
 

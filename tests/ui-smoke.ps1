@@ -88,10 +88,36 @@ try {
     Search 'objet:"Outer mail"'
     SelectRow 0
     Shot '4-message-avec-message-joint'
+    $inner = $win.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition(
+        (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button)),
+        (Cond $AE::NameProperty '✉  Inner mail'))))
+    if ($null -eq $inner) {
+        # the button's name is its TextBlock content: search more loosely
+        $inner = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
+                 Where-Object { $_.Current.Name -like '*Inner mail*' } | Select-Object -First 1
+    }
+    if ($null -eq $inner) { throw "Bouton du message joint introuvable" }
+    $inner.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep 5
+    Log ("  message joint affiché : " + (ById 'TxtSubject').Current.Name)
+    Shot '4b-message-joint-ouvert'
 
     Search 'objet:HtmlSampleEmail prince'
     SelectRow 0
     Shot '5-html-encapsule-rtf'
+
+    # Sources window (modal)
+    $btn = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
+           Where-Object { $_.Current.Name -eq 'Sources…' } | Select-Object -First 1
+    if ($null -ne $btn) {
+        $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Start-Sleep 3
+        Shot '6-sources'
+        $dlg = $win.FindFirst($Scope::Children, (Cond $AE::NameProperty "Sources du dossier d'affaire"))
+        if ($null -eq $dlg) { $dlg = $AE::RootElement.FindFirst($Scope::Descendants, (Cond $AE::NameProperty "Sources du dossier d'affaire")) }
+        if ($null -ne $dlg) { $dlg.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close(); Start-Sleep 1 }
+        else { Log "  fenêtre Sources introuvable" }
+    }
 
     $d = @(Dialogs)
     if ($d.Count -gt 0) { Log ("Autres fenêtres ouvertes : " + ($d -join ' | ')) }

@@ -1,5 +1,8 @@
 using System;
+using System.Globalization;
 using System.IO;
+using System.Threading;
+using System.Windows.Markup;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -19,6 +22,14 @@ namespace PstBrowser.App
         protected override void OnStartup(StartupEventArgs e)
         {
             Charsets.EnsureRegistered();
+            // The interface is in French: use French formats (dates, numbers) whatever the Windows language
+            var fr = new CultureInfo("fr-FR");
+            CultureInfo.DefaultThreadCurrentCulture = fr;
+            CultureInfo.DefaultThreadCurrentUICulture = fr;
+            Thread.CurrentThread.CurrentCulture = fr;
+            Thread.CurrentThread.CurrentUICulture = fr;
+            FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
+                new FrameworkPropertyMetadata(XmlLanguage.GetLanguage(fr.IetfLanguageTag)));
             Directory.CreateDirectory(LocalDataFolder);
 
             DispatcherUnhandledException += OnDispatcherUnhandledException;

@@ -111,7 +111,7 @@ namespace PstBrowser.App.Controls
         {
             TxtSubject.Text = string.IsNullOrWhiteSpace(v.Subject) ? "(sans objet)" : v.Subject;
             if (v.Importance == 2) TxtSubject.Text = "❗ " + TxtSubject.Text;
-            TxtFrom.Text = v.From ?? "";
+            SetRow(LblFrom, TxtFrom, v.From);
             SetRow(LblTo, TxtTo, v.To);
             SetRow(LblCc, TxtCc, v.Cc);
             SetRow(LblBcc, TxtBcc, v.Bcc);

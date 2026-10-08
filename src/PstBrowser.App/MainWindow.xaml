@@ -24,6 +24,8 @@
                             ToolTip="Exporte tous les résultats de la recherche courante dans un fichier CSV (Excel)"/>
                     <Button Content="Exporter la sélection (.eml)" Style="{StaticResource ToolButton}" Click="ExportEmlSelection_Click" x:Name="BtnEmlSel" IsEnabled="False"
                             ToolTip="Enregistre les messages sélectionnés dans un dossier, au format .eml"/>
+                    <Button x:Name="BtnLayout" Content="Lecture en bas" Style="{StaticResource ToolButton}" Click="Layout_Click"
+                            ToolTip="Afficher le volet de lecture à droite de la liste ou en dessous"/>
                     <Button Content="?" Style="{StaticResource ToolButton}" Click="Help_Click" ToolTip="Aide" Margin="0" Width="30"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
@@ -88,11 +90,9 @@
         <Grid>
             <Grid x:Name="MainArea" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="ColTree" Width="270" MinWidth="150"/>
+                    <ColumnDefinition x:Name="ColTree" Width="250" MinWidth="150"/>
                     <ColumnDefinition Width="5"/>
-                    <ColumnDefinition x:Name="ColList" Width="*" MinWidth="300"/>
-                    <ColumnDefinition Width="5"/>
-                    <ColumnDefinition x:Name="ColReader" Width="*" MinWidth="300"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- folder tree -->
@@ -126,8 +126,9 @@
 
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource PanelBrush}" ResizeBehavior="PreviousAndNext"/>
 
-                <!-- message list -->
-                <DockPanel Grid.Column="2">
+                <!-- message list + reading pane (right or bottom, arranged by ApplyReaderLayout) -->
+                <Grid x:Name="ContentGrid" Grid.Column="2">
+                <DockPanel x:Name="ListPanel">
                     <Border DockPanel.Dock="Top" Padding="10,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
                         <DockPanel>
                             <ComboBox x:Name="CmbSort" DockPanel.Dock="Right" Width="150" SelectedIndex="0" SelectionChanged="CmbSort_SelectionChanged" Margin="10,0,0,0"
@@ -193,8 +194,8 @@
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="📎" Binding="{Binding AttachmentMark}" Width="28" SortMemberPath="HasAttachments" CanUserSort="False"/>
-                            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='dd/MM/yyyy HH:mm'}" Width="118" SortMemberPath="Date"/>
-                            <DataGridTextColumn Header="De" Binding="{Binding From}" Width="170" SortMemberPath="From"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='dd/MM/yy HH:mm'}" Width="100" MinWidth="100" SortMemberPath="Date"/>
+                            <DataGridTextColumn Header="De" Binding="{Binding From}" Width="150" MinWidth="60" SortMemberPath="From"/>
                             <DataGridTemplateColumn Header="Objet" Width="*" SortMemberPath="Subject" MinWidth="150">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -206,17 +207,19 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Boîte" Binding="{Binding Mailbox}" Width="130" CanUserSort="False"/>
-                            <DataGridTextColumn Header="Dossier" Binding="{Binding FolderName}" Width="110" CanUserSort="False"/>
-                            <DataGridTextColumn Header="Taille" Binding="{Binding SizeText}" Width="70" SortMemberPath="Size"/>
+                            <DataGridTextColumn Header="Boîte" Binding="{Binding Mailbox}" Width="120" MinWidth="40" CanUserSort="False"/>
+                            <DataGridTextColumn Header="Dossier" Binding="{Binding FolderName}" Width="100" MinWidth="40" CanUserSort="False"/>
+                            <DataGridTextColumn Header="Taille" Binding="{Binding SizeText}" Width="66" MinWidth="50" SortMemberPath="Size"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
 
-                <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource PanelBrush}" ResizeBehavior="PreviousAndNext"/>
+                <GridSplitter x:Name="ReaderSplitter" Background="{StaticResource PanelBrush}" ResizeBehavior="PreviousAndNext"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
 
                 <!-- reading pane -->
-                <c:MessageViewer x:Name="Viewer" Grid.Column="4"/>
+                <c:MessageViewer x:Name="Viewer"/>
+                </Grid>
             </Grid>
 
             <!-- ===================== welcome screen ===================== -->
