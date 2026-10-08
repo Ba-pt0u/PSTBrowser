@@ -1,0 +1,35 @@
+<Window x:Class="PstBrowser.App.Windows.ColumnsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Colonnes de la liste des messages" Height="560" Width="460" MinHeight="380" MinWidth="380"
+        WindowStartupLocation="CenterOwner" Icon="/Resources/app.ico" ShowInTaskbar="False">
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8">
+            Cochez les colonnes à afficher. L'ordre se règle ici (Monter / Descendre) ou en faisant glisser un en-tête de colonne dans la liste.
+            Les largeurs se règlent en tirant le bord d'un en-tête. Ces préférences sont propres à votre session Windows.
+        </TextBlock>
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button x:Name="BtnStandard" Content="Vue Standard" Style="{StaticResource ToolButton}" Click="Preset_Click" Tag="Standard"
+                    ToolTip="Date, expéditeur, objet, boîte, dossier, taille"/>
+            <Button x:Name="BtnInvestigation" Content="Vue Investigation" Style="{StaticResource ToolButton}" Click="Preset_Click" Tag="Investigation"
+                    ToolTip="Dates de réception et d'envoi, adresses, À/Cc/Cci, chemin du dossier, fichier source, pièces jointes, Message-ID…"/>
+            <Button x:Name="BtnReset" Content="Réinitialiser" Style="{StaticResource ToolButton}" Click="Reset_Click"
+                    ToolTip="Revient à la vue Standard avec les largeurs par défaut"/>
+        </WrapPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="OK" Style="{StaticResource AccentButton}" Width="80" IsDefault="True" Click="Ok_Click"/>
+            <Button Content="Annuler" Style="{StaticResource ToolButton}" Width="80" IsCancel="True" Margin="0"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Top">
+            <Button x:Name="BtnUp" Content="Monter" Style="{StaticResource ToolButton}" Click="Up_Click" Margin="0,0,0,6"/>
+            <Button x:Name="BtnDown" Content="Descendre" Style="{StaticResource ToolButton}" Click="Down_Click" Margin="0"/>
+        </StackPanel>
+        <ListBox x:Name="ColumnList" SelectionMode="Single" BorderBrush="{StaticResource BorderBrush}">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding Title}" Margin="2,2"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>

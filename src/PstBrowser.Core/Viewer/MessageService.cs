@@ -39,6 +39,26 @@ namespace PstBrowser.Core.Viewer
         public bool IsEmbeddedMessage { get; set; }
         public bool IsInline { get; set; }
         public string SizeText => IsEmbeddedMessage ? "message" : Format.Size(Size);
+        /// <summary>Position in the attachment tree of the indexed message: "3", or "2/1" for attachment 1 of embedded message 2.</summary>
+        public string IdxPath { get; set; }
+        /// <summary>The attachment contains the searched terms.</summary>
+        public bool HasHit { get; set; }
+        /// <summary>Status of the text extraction (<see cref="Extraction.AttachmentStatus"/>), null when not indexed.</summary>
+        public string TextStatus { get; set; }
+        public long TextLength { get; set; }
+        public string Sha256 { get; set; }
+        public bool HasText => TextStatus == Extraction.AttachmentStatus.Ok && TextLength > 0;
+    }
+
+    /// <summary>Text extracted from an attachment, as stored in the index.</summary>
+    public sealed class AttachmentText
+    {
+        public string Name { get; set; }
+        public string Status { get; set; }
+        public string Error { get; set; }
+        public string Sha256 { get; set; }
+        public long Size { get; set; }
+        public string Text { get; set; }
     }
 
     public sealed class MessageView
@@ -161,7 +181,8 @@ namespace PstBrowser.Core.Viewer
 
         public sealed class Location2 { public string Mailbox, FolderPath, SourceName, SourcePath; }
 
-        public MessageView GetView(MessageRef mref, IList<string> highlightTerms = null)
+        /// <param name="query">The search text, used to flag the attachments that contain the searched terms.</param>
+        public MessageView GetView(MessageRef mref, IList<string> highlightTerms = null, string query = null)
         {
             return With(mref, (m, loc) =>
             {
@@ -190,10 +211,83 @@ namespace PstBrowser.Core.Viewer
                 v.Attachments = atts.Where(Indexer.IsVisibleAttachment)
                                     .Select(a => new AttachmentView { Index = a.Index, FileName = a.FileName, Size = a.Size, IsEmbeddedMessage = a.IsEmbeddedMessage, IsInline = a.IsInline })
                                     .ToList();
+                MarkIndexedAttachments(v, mref, query, highlightTerms);
                 v.BodyHtml = BodyRenderer.Render(m, mref, highlightTerms, v.InlineImages, out var fmt);
                 v.BodyFormat = fmt;
                 return v;
             });
+        }
+
+        /// <summary>Adds the extraction status, hash and search hits of pass 3 to the attachments of a view.</summary>
+        private void MarkIndexedAttachments(MessageView v, MessageRef mref, string query, IList<string> terms)
+        {
+            foreach (var a in v.Attachments) a.IdxPath = string.Join("/", mref.EmbeddedPath.Concat(new[] { a.Index }));
+            if (v.Attachments.Count == 0) return;
+            try
+            {
+                lock (_ws.DbLock)
+                {
+                    var db = _ws.Db;
+                    var byPath = v.Attachments.ToDictionary(a => a.IdxPath);
+                    var st = db.Prepare("SELECT idx_path, status, text_len, sha256 FROM attachments WHERE message_id=?");
+                    st.Bind(1, mref.Id);
+                    while (st.Step())
+                        if (byPath.TryGetValue(st.GetString(0) ?? "", out var a)) { a.TextStatus = st.GetString(1); a.TextLength = st.GetLong(2); a.Sha256 = st.GetString(3); }
+                    st.Reset();
+
+                    string expr = AttachmentHitExpression(query, terms);
+                    if (expr == null) return;
+                    st = db.Prepare("SELECT a.idx_path FROM attachments a JOIN att_fts ON att_fts.rowid=a.id WHERE a.message_id=? AND att_fts MATCH ?");
+                    st.Bind(1, mref.Id); st.Bind(2, expr);
+                    try
+                    {
+                        while (st.Step())
+                        {
+                            var hit = st.GetString(0) ?? "";
+                            if (byPath.TryGetValue(hit, out var a)) a.HasHit = true;
+                            // a message attached to this one is flagged when one of its own attachments matches
+                            foreach (var emb in v.Attachments.Where(x => x.IsEmbeddedMessage && hit.StartsWith(x.IdxPath + "/", StringComparison.Ordinal))) emb.HasHit = true;
+                        }
+                    }
+                    finally { st.Reset(); }
+                }
+            }
+            catch (Exception) { /* index without attachment tables or invalid expression: no marks */ }
+        }
+
+        private static string AttachmentHitExpression(string query, IList<string> terms)
+        {
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                var parts = Search.QueryParser.Parse(query).Positive.Select(c => c.AttachmentExpression()).Where(e => e != null).ToList();
+                return parts.Count == 0 ? null : string.Join(" OR ", parts);
+            }
+            if (terms == null || terms.Count == 0) return null;
+            var phrases = terms.Select(t => (t.TrimEnd('*').Replace("\"", " ").Trim(), t.EndsWith("*"))).Where(t => t.Item1.Length > 0 && t.Item1.Any(char.IsLetterOrDigit))
+                               .Select(t => "\"" + t.Item1 + "\"" + (t.Item2 ? "*" : "")).ToList();
+            return phrases.Count == 0 ? null : string.Join(" OR ", phrases);
+        }
+
+        /// <summary>The text extracted from one attachment (null when the attachment is not in the index).</summary>
+        public AttachmentText GetAttachmentText(long messageId, string idxPath)
+        {
+            lock (_ws.DbLock)
+            {
+                var db = _ws.Db;
+                var st = db.Prepare("SELECT id, name, status, error, sha256, size FROM attachments WHERE message_id=? AND idx_path=?");
+                st.Bind(1, messageId); st.Bind(2, idxPath);
+                long id;
+                AttachmentText r;
+                try
+                {
+                    if (!st.Step()) return null;
+                    id = st.GetLong(0);
+                    r = new AttachmentText { Name = st.GetString(1), Status = st.GetString(2), Error = st.GetString(3), Sha256 = st.GetString(4), Size = st.GetLong(5) };
+                }
+                finally { st.Reset(); }
+                r.Text = db.ExecScalarString("SELECT content FROM att_fts WHERE rowid=?", id) ?? "";
+                return r;
+            }
         }
 
         public void SaveAttachment(MessageRef mref, int index, string targetPath)

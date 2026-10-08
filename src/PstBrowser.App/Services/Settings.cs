@@ -18,6 +18,12 @@ namespace PstBrowser.App.Services
         public bool HideEmptyFolders { get; set; } = true;
         /// <summary>Reading pane below the list (null = automatic: below on small screens).</summary>
         public bool? ReaderBottom { get; set; }
+        /// <summary>
+        /// Columns of the message list, in display order (see <see cref="ColumnCatalog"/>). Empty: the view named by
+        /// <see cref="ColumnPreset"/> is used ("Standard" or "Investigation").
+        /// </summary>
+        public List<ColumnState> ListColumns { get; set; } = new List<ColumnState>();
+        public string ColumnPreset { get; set; } = "Standard";
 
         private static string FilePath => Path.Combine(App.LocalDataFolder, "settings.json");
 

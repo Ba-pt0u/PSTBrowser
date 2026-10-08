@@ -53,7 +53,7 @@ namespace PstBrowser.Core.Index
     public sealed class Workspace : IDisposable
     {
         public const string DbFileName = "pstbrowser-index.db";
-        public const int SchemaVersion = 1;
+        public const int SchemaVersion = 2;
 
         public string Folder { get; }
         public string DbPath => System.IO.Path.Combine(Folder, DbFileName);
@@ -157,7 +157,13 @@ CREATE TABLE IF NOT EXISTS messages(
   message_id TEXT,
   dup_of INTEGER,
   indexed INTEGER NOT NULL DEFAULT 0,
-  error TEXT);
+  error TEXT,
+  bcc_text TEXT,
+  sent_date INTEGER,
+  conversation_topic TEXT,
+  is_read INTEGER,
+  flag_status INTEGER,
+  att_indexed INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS messages_folder_date ON messages(folder_id, date);
 CREATE INDEX IF NOT EXISTS messages_mailbox_date ON messages(mailbox_id, date);
 CREATE INDEX IF NOT EXISTS messages_date ON messages(date);
@@ -167,12 +173,75 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, b
                 var v = _db.ExecScalarString("SELECT value FROM meta WHERE key='schema'");
                 if (v == null)
                 {
+                    CreateV2Objects();
                     _db.Exec("INSERT INTO meta(key,value) VALUES('schema',?)", SchemaVersion.ToString());
                     _db.Exec("INSERT INTO meta(key,value) VALUES('created',?)", DateTime.UtcNow.ToString("o"));
                 }
-                else if (int.Parse(v) > SchemaVersion)
-                    throw new InvalidOperationException("Cet index a été créé par une version plus récente de PstBrowser.");
+                else
+                {
+                    int version = int.Parse(v);
+                    if (version > SchemaVersion)
+                        throw new InvalidOperationException("Cet index a été créé par une version plus récente de PstBrowser.");
+                    if (version < 2) MigrateToV2();
+                }
             }
+        }
+
+        /// <summary>Objects introduced by schema 2 (the new message columns are part of the base CREATE TABLE / the migration).</summary>
+        private void CreateV2Objects()
+        {
+            _db.Exec(@"
+CREATE TABLE IF NOT EXISTS attachments(
+  id INTEGER PRIMARY KEY,
+  message_id INTEGER NOT NULL,
+  idx_path TEXT NOT NULL,
+  name TEXT,
+  size INTEGER,
+  ext TEXT,
+  sha256 TEXT,
+  status TEXT NOT NULL,
+  error TEXT,
+  text_len INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS attachments_message ON attachments(message_id);
+CREATE INDEX IF NOT EXISTS attachments_sha ON attachments(sha256);
+CREATE INDEX IF NOT EXISTS messages_att_pending ON messages(source_id, att_indexed);
+CREATE VIRTUAL TABLE IF NOT EXISTS att_fts USING fts5(name, content, tokenize='unicode61 remove_diacritics 2')");
+        }
+
+        private static readonly (string name, string type)[] V2MessageColumns =
+        {
+            ("bcc_text", "TEXT"), ("sent_date", "INTEGER"), ("conversation_topic", "TEXT"),
+            ("is_read", "INTEGER"), ("flag_status", "INTEGER"), ("att_indexed", "INTEGER NOT NULL DEFAULT 0"),
+        };
+
+        /// <summary>
+        /// Schema 1 → 2: adds the new columns and tables, then sends every source back to pass 2 so that the new columns
+        /// (Bcc, sent date, conversation, read/flag state) are filled. PST sources keep their structure (status 'listed');
+        /// MSG sources have no separate structure pass and are indexed again from scratch.
+        /// </summary>
+        private void MigrateToV2()
+        {
+            _db.Begin();
+            try
+            {
+                var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var st = _db.Prepare("PRAGMA table_info(messages)");
+                while (st.Step()) existing.Add(st.GetString(1));
+                st.Reset();
+                foreach (var (name, type) in V2MessageColumns)
+                    if (!existing.Contains(name)) _db.Exec($"ALTER TABLE messages ADD COLUMN {name} {type}");
+                CreateV2Objects();
+
+                _db.Exec("UPDATE messages SET indexed=0, att_indexed=0 WHERE source_id IN (SELECT id FROM sources WHERE kind=?)", (int)SourceKind.Pst);
+                _db.Exec("UPDATE sources SET status='listed', indexed_count=0 WHERE kind=? AND status IN ('listed','indexing','done')", (int)SourceKind.Pst);
+                _db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE source_id IN (SELECT id FROM sources WHERE kind<>?))", (int)SourceKind.Pst);
+                _db.Exec("DELETE FROM messages WHERE source_id IN (SELECT id FROM sources WHERE kind<>?)", (int)SourceKind.Pst);
+                _db.Exec("DELETE FROM folders WHERE source_id IN (SELECT id FROM sources WHERE kind<>?)", (int)SourceKind.Pst);
+                _db.Exec("UPDATE sources SET status='pending', error=NULL, msg_count=0, indexed_count=0 WHERE kind<>?", (int)SourceKind.Pst);
+                _db.Exec("INSERT INTO meta(key,value) VALUES('schema','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+                _db.Commit();
+            }
+            catch { _db.Rollback(); throw; }
         }
 
         // ---------------------------------------------------------------- sources & mailboxes
@@ -351,15 +420,23 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, b
                 _db.Begin();
                 try
                 {
-                    _db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
-                    _db.Exec("DELETE FROM messages WHERE source_id=?", sourceId);
-                    _db.Exec("DELETE FROM folders WHERE source_id=?", sourceId);
+                    DeleteSourceContent(_db, sourceId);
                     _db.Exec("DELETE FROM sources WHERE id=?", sourceId);
                     CleanupMailboxes();
                     _db.Commit();
                 }
                 catch { _db.Rollback(); throw; }
             }
+        }
+
+        /// <summary>Deletes messages, full-text rows, attachment rows and folders of a source (inside the caller's transaction).</summary>
+        internal static void DeleteSourceContent(SqliteDb db, long sourceId)
+        {
+            db.Exec("DELETE FROM att_fts WHERE rowid IN (SELECT a.id FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.source_id=?)", sourceId);
+            db.Exec("DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
+            db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
+            db.Exec("DELETE FROM messages WHERE source_id=?", sourceId);
+            db.Exec("DELETE FROM folders WHERE source_id=?", sourceId);
         }
 
         /// <summary>Marks duplicates (same Internet Message-ID within a mailbox): every copy but the first gets dup_of = first id.</summary>
@@ -438,6 +515,39 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, b
             lock (DbLock) return _db.ExecScalarLong("SELECT COUNT(*) FROM sources WHERE status<>'done'") > 0;
         }
 
+        /// <summary>Whether indexing attachment contents is enabled for this case (default: yes).</summary>
+        public bool AttachmentIndexingEnabled
+        {
+            get => GetMeta("attachments") != "0";
+            set => SetMeta("attachments", value ? "1" : "0");
+        }
+
+        /// <summary>True when pass 3 (attachment contents) has messages left to process.</summary>
+        public bool HasPendingAttachments()
+        {
+            lock (DbLock) return _db.ExecScalarLong("SELECT EXISTS(SELECT 1 FROM messages WHERE indexed=1 AND has_att=1 AND att_indexed=0)") > 0;
+        }
+
+        /// <summary>Indexing work remains (structure, contents, or attachment contents when enabled).</summary>
+        public bool HasPendingWork() => HasPendingSources() || (AttachmentIndexingEnabled && HasPendingAttachments());
+
+        /// <summary>Re-extracts the attachments of every message (e.g. after enabling the option or upgrading the extractors).</summary>
+        public void ResetAttachments()
+        {
+            lock (DbLock)
+            {
+                _db.Begin();
+                try
+                {
+                    _db.Exec("DELETE FROM att_fts");
+                    _db.Exec("DELETE FROM attachments");
+                    _db.Exec("UPDATE messages SET att_indexed=0");
+                    _db.Commit();
+                }
+                catch { _db.Rollback(); throw; }
+            }
+        }
+
         /// <summary>Marks a source to be indexed again from scratch (e.g. after the file was replaced).</summary>
         public void ResetSource(long sourceId)
         {
@@ -446,9 +556,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, b
                 _db.Begin();
                 try
                 {
-                    _db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
-                    _db.Exec("DELETE FROM messages WHERE source_id=?", sourceId);
-                    _db.Exec("DELETE FROM folders WHERE source_id=?", sourceId);
+                    DeleteSourceContent(_db, sourceId);
                     _db.Exec("UPDATE sources SET status='pending', error=NULL, msg_count=0, indexed_count=0, sha256=NULL WHERE id=?", sourceId);
                     _db.Commit();
                 }

@@ -12,11 +12,11 @@ namespace PstBrowser.App.Windows
             Viewer.ShowPopOutButton = false;
         }
 
-        public static void Open(MessageRef mref, IList<string> terms, Window owner)
+        public static void Open(MessageRef mref, IList<string> terms, Window owner, string query = null)
         {
             var w = new MessageWindow { Owner = owner };
             w.Show();
-            _ = w.Viewer.ShowAsync(mref, terms);
+            _ = w.Viewer.ShowAsync(mref, terms, query);
         }
     }
 }

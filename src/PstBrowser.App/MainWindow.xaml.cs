@@ -34,6 +34,7 @@ namespace PstBrowser.App
         private SearchRequest _lastRequest;
         private string _lastDescription;
         private List<string> _lastTerms = new List<string>();
+        private string _lastQuery = "";
         private int _searchSeq;
         private bool _wasIndexing;
         private DateTime _lastTreeRefresh = DateTime.MinValue;
@@ -43,6 +44,7 @@ namespace PstBrowser.App
         public MainWindow()
         {
             InitializeComponent();
+            InitColumns();
             Tree.ItemsSource = _treeRoots;
             MessageList.ItemsSource = _rows;
             TxtQuery.TextChanged += (_, __) => QueryHint.Visibility = string.IsNullOrEmpty(TxtQuery.Text) ? Visibility.Visible : Visibility.Collapsed;
@@ -184,7 +186,7 @@ namespace PstBrowser.App
                 SetStatus("Dossier d'affaire prêt : " + folder);
             }
             else SetStatus("Dossier d'affaire : " + folder);
-            if (ws.HasPendingSources()) StartIndexing();
+            if (ws.HasPendingWork()) StartIndexing();
         }
 
         private void CloseWorkspace()
@@ -328,7 +330,7 @@ namespace PstBrowser.App
             if (w.Changed)
             {
                 RefreshTree();
-                if (AppServices.Workspace.HasPendingSources()) StartIndexing();
+                if (AppServices.Workspace.HasPendingWork()) StartIndexing();
                 if (_lastRequest != null) RunSearch(_lastRequest, _lastDescription, _lastTerms);
             }
         }
@@ -374,12 +376,12 @@ namespace PstBrowser.App
                 IndexProgress.Value = Math.Min(p.Done, p.Total);
                 var rate = p.MessagesPerSecond > 0 ? $" — {p.MessagesPerSecond:N0} éléments/s" : "";
                 var eta = "";
-                if (p.MessagesPerSecond > 1 && p.Total > p.Done && p.Phase.StartsWith("Indexation"))
+                if (p.MessagesPerSecond > 1 && p.Total > p.Done && (p.Phase.StartsWith("Indexation") || p.Phase.StartsWith("Extraction")))
                 {
                     var secs = (p.Total - p.Done) / p.MessagesPerSecond;
                     eta = secs < 90 ? " — moins de 2 min restantes" : $" — environ {Math.Ceiling(secs / 60):N0} min restantes";
                 }
-                var unit = p.Phase.StartsWith("Lecture") ? "sources" : "éléments";
+                var unit = p.Phase.StartsWith("Lecture") ? "sources" : p.Phase.StartsWith("Extraction") ? "messages avec pièces jointes" : "éléments";
                 TxtStatus.Text = $"{p.Phase} : {p.CurrentSource} — {p.Done:N0} / {p.Total:N0} {unit}{rate}{eta}" +
                                  (p.Errors > 0 ? $" — {p.Errors} erreur(s)" : "") +
                                  "  (la recherche est utilisable pendant l'indexation, résultats partiels)";
@@ -389,7 +391,7 @@ namespace PstBrowser.App
             else if (_wasIndexing)
             {
                 _wasIndexing = false;
-                IndexPanel.Visibility = AppServices.Workspace?.HasPendingSources() == true ? Visibility.Visible : Visibility.Collapsed;
+                IndexPanel.Visibility = AppServices.Workspace?.HasPendingWork() == true ? Visibility.Visible : Visibility.Collapsed;
                 IndexProgress.IsIndeterminate = false;
                 TxtStatus.Text = p.Phase + (p.LastError != null ? " — dernière erreur : " + p.LastError : "");
                 RefreshTree();
@@ -455,7 +457,7 @@ namespace PstBrowser.App
                 DateTo = DateTo.SelectedDate,
                 OnlyWithAttachments = ChkAtt.IsChecked == true,
                 HideDuplicates = node.Kind != NodeKind.Folder && ChkDedup.IsChecked == true,
-                Sort = CurrentSort(),
+                SortBy = _sortBy, SortDescending = _sortDesc,
             };
             var desc = node.Kind == NodeKind.Folder ? $"{node.Name}" : node.Kind == NodeKind.Mailbox ? $"Boîte {node.Name}" : "Toutes les boîtes";
             RunSearch(req, desc, new List<string>());
@@ -488,7 +490,7 @@ namespace PstBrowser.App
                 DateTo = DateTo.SelectedDate,
                 OnlyWithAttachments = ChkAtt.IsChecked == true,
                 HideDuplicates = ChkDedup.IsChecked == true,
-                Sort = CurrentSort(),
+                SortBy = _sortBy, SortDescending = _sortDesc,
             };
             string where = "toutes les boîtes";
             if (CmbScope.SelectedIndex >= 1 && node != null && node.MailboxId.HasValue)
@@ -524,16 +526,6 @@ namespace PstBrowser.App
             if (node != null) Browse(node);
         }
 
-        private SortOrder CurrentSort() => CmbSort.SelectedIndex switch
-        {
-            1 => SortOrder.DateAsc,
-            2 => SortOrder.Relevance,
-            3 => SortOrder.SenderAsc,
-            4 => SortOrder.SubjectAsc,
-            5 => SortOrder.SizeDesc,
-            _ => SortOrder.DateDesc,
-        };
-
         private async void RunSearch(SearchRequest req, string description, List<string> terms, bool append = false)
         {
             var svc = AppServices.Search;
@@ -542,6 +534,7 @@ namespace PstBrowser.App
             _lastRequest = req;
             _lastDescription = description;
             _lastTerms = terms ?? new List<string>();
+            if (!append) _lastQuery = req.Query ?? "";
             if (!append) TxtResults.Text = description + " — recherche…";
             BtnMore.Visibility = Visibility.Collapsed;
             SearchResult res;
@@ -589,40 +582,12 @@ namespace PstBrowser.App
             {
                 Query = r.Query, MailboxId = r.MailboxId, FolderPath = r.FolderPath, IncludeSubfolders = r.IncludeSubfolders,
                 DateFrom = r.DateFrom, DateTo = r.DateTo, OnlyWithAttachments = r.OnlyWithAttachments, HideDuplicates = r.HideDuplicates,
-                Sort = r.Sort, Limit = 2000, Offset = _rows.Count,
+                SortBy = r.SortBy, SortDescending = r.SortDescending, Limit = 2000, Offset = _rows.Count,
             };
             var desc = _lastDescription;
             var terms = _lastTerms;
             RunSearch(next, desc, terms, append: true);
             _lastRequest = r; // keep the original request for exports and refreshes
-        }
-
-        private void CmbSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressSortEvent || _lastRequest == null || !IsLoaded) return;
-            var r = _lastRequest;
-            r.Sort = CurrentSort();
-            r.Offset = 0;
-            r.Limit = 1000;
-            foreach (var c in MessageList.Columns) c.SortDirection = null;
-            RunSearch(r, _lastDescription, _lastTerms);
-        }
-
-        private void List_Sorting(object sender, DataGridSortingEventArgs e)
-        {
-            e.Handled = true;
-            int idx;
-            switch (e.Column.SortMemberPath)
-            {
-                case "Date": idx = CmbSort.SelectedIndex == 0 ? 1 : 0; break;
-                case "From": idx = 3; break;
-                case "Subject": idx = 4; break;
-                case "Size": idx = 5; break;
-                default: return;
-            }
-            CmbSort.SelectedIndex = idx; // triggers the new search
-            foreach (var c in MessageList.Columns) c.SortDirection = null;
-            e.Column.SortDirection = idx == 1 || idx == 3 || idx == 4 ? ListSortDirection.Ascending : ListSortDirection.Descending;
         }
 
         // ================================================================== list & reader
@@ -642,20 +607,20 @@ namespace PstBrowser.App
                 return;
             }
             if (Viewer.CurrentRef != null && Viewer.CurrentRef.Id == row.Id && !Viewer.CurrentRef.IsEmbedded) return;
-            _ = Viewer.ShowAsync(new MessageRef(row.Id), _lastTerms);
+            _ = Viewer.ShowAsync(new MessageRef(row.Id), _lastTerms, _lastQuery);
         }
 
         private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (e.OriginalSource is DependencyObject d && FindParent<DataGridRow>(d) != null && MessageList.SelectedItem is RowItem row)
-                MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this);
+                MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this, _lastQuery);
         }
 
         private void List_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && MessageList.SelectedItem is RowItem row)
             {
-                MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this);
+                MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this, _lastQuery);
                 e.Handled = true;
             }
         }
@@ -669,7 +634,7 @@ namespace PstBrowser.App
         private void OpenInWindow_Click(object sender, RoutedEventArgs e)
         {
             foreach (var row in MessageList.SelectedItems.OfType<RowItem>().Take(10))
-                MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this);
+                MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this, _lastQuery);
         }
 
         private void ShowFolder_Click(object sender, RoutedEventArgs e)
@@ -802,6 +767,7 @@ EXPORTS
                 _settings.WindowHeight = Height;
             }
             _settings.TreeWidth = ColTree.ActualWidth;
+            PersistLayoutIfChanged();
             _settings.Save();
             _timer.Stop();
             AppServices.Close();

@@ -50,6 +50,7 @@ namespace PstBrowser.Core.Viewer
                 try { rtf = m.RtfBody; } catch { }
                 html = RtfConverter.ToHtml(rtf);
                 if (!string.IsNullOrWhiteSpace(html)) format = "HTML (RTF)";
+                else if (!string.IsNullOrWhiteSpace(html = NativeRtfToHtml(rtf))) format = "RTF (mis en forme)";
                 else
                 {
                     string text = null;
@@ -92,6 +93,35 @@ namespace PstBrowser.Core.Viewer
                 html = bm.Success ? html.Insert(bm.Index + bm.Length, banner) : banner + html;
             }
             return html;
+        }
+
+        /// <summary>Plain text (e.g. the text extracted from an attachment) as a safe HTML document, with the searched terms highlighted.</summary>
+        public static string RenderText(string title, string note, string text, IList<string> terms, int maxChars = 1_000_000)
+        {
+            text ??= "";
+            bool cut = text.Length > maxChars;
+            if (cut) text = text.Substring(0, maxChars);
+            string body = WebUtility.HtmlEncode(text);
+            if (terms != null && terms.Count > 0) body = Highlight(body, terms);
+            var sb = new StringBuilder();
+            sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"").Append(Csp).Append("\">");
+            sb.Append("<title>").Append(WebUtility.HtmlEncode(title ?? "")).Append("</title><style>").Append(BaseStyle).Append("</style></head><body>");
+            if (!string.IsNullOrEmpty(note)) sb.Append("<div class=\"pl-note\">").Append(WebUtility.HtmlEncode(note)).Append("</div>");
+            if (cut) sb.Append("<div class=\"pl-note\">Aperçu limité aux ").Append(maxChars.ToString("N0")).Append(" premiers caractères.</div>");
+            sb.Append("<div class=\"pl-text\">").Append(body).Append("</div></body></html>");
+            return sb.ToString();
+        }
+
+        /// <summary>Native RTF (not encapsulated HTML) rendered with RtfPipe: fonts, sizes, colours and links are kept. Null on failure.</summary>
+        internal static string NativeRtfToHtml(string rtf)
+        {
+            if (string.IsNullOrWhiteSpace(rtf)) return null;
+            try
+            {
+                var html = RtfPipe.Rtf.ToHtml(rtf);
+                return string.IsNullOrWhiteSpace(html) || !HtmlText.ToText(html).Trim().Any() ? null : html;
+            }
+            catch { return null; } // malformed RTF: the caller falls back to the plain-text conversion
         }
 
         public static string Sanitize(string html, out bool blockedRemote)

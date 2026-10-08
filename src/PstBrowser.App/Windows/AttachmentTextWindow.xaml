@@ -1,0 +1,10 @@
+<Window x:Class="PstBrowser.App.Windows.AttachmentTextWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Aperçu du texte" Height="640" Width="860" MinWidth="420" MinHeight="300" WindowStartupLocation="CenterOwner" Icon="/Resources/app.ico">
+    <Grid Background="White">
+        <wv2:WebView2 x:Name="Web"/>
+        <TextBlock x:Name="TxtError" Visibility="Collapsed" TextWrapping="Wrap" Margin="20" Foreground="#A33"/>
+    </Grid>
+</Window>

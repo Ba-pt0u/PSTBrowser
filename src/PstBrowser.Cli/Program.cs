@@ -17,8 +17,11 @@ namespace PstBrowser.Cli
     {
         private static int Main(string[] args)
         {
+            // Text extraction worker: parses attachments in a separate process (see Indexer, pass 3)
+            if (PstBrowser.Core.Extraction.ExtractWorker.IsWorkerInvocation(args)) return PstBrowser.Core.Extraction.ExtractWorker.Run();
             Charsets.EnsureRegistered();
             Console.OutputEncoding = System.Text.Encoding.UTF8;
+            if (args.Length == 2 && args[0] == "extract-file") return ExtractFile(args[1]);
             if (args.Length < 2) return Usage();
             if (args[0] == "selftest" && args.Length >= 4) return SelfTest.Run(args[1], args[2], args[3]);
             string cmd = args[0].ToLowerInvariant();
@@ -40,6 +43,9 @@ namespace PstBrowser.Cli
                             using var ws = Workspace.OpenOrCreate(wsDir);
                             var opt = new IndexerOptions();
                             if (args.Contains("--sha256")) opt.ComputeSha256 = true;
+                            if (args.Contains("--no-attachments")) opt.IndexAttachments = false;
+                            var ti = Array.IndexOf(args, "--attachment-timeout");
+                            if (ti > 0 && ti + 1 < args.Length) opt.AttachmentTimeoutSeconds = int.Parse(args[ti + 1]);
                             var pi = Array.IndexOf(args, "--parallel");
                             if (pi > 0 && pi + 1 < args.Length) opt.Parallelism = int.Parse(args[pi + 1]);
                             var ix = new Indexer(ws, opt);
@@ -86,7 +92,11 @@ namespace PstBrowser.Cli
                             var req = new SearchRequest { Query = args.Length > 2 ? args[2] : "", Limit = 50 };
                             for (int i = 3; i < args.Length; i++)
                             {
-                                if (args[i] == "--sort" && i + 1 < args.Length) req.Sort = Enum.Parse<SortOrder>(args[++i], true);
+                                if (args[i] == "--sort" && i + 1 < args.Length)
+                                {
+                                    if (!SortFields.TryParse(args[++i], out var key, out var desc)) { Console.WriteLine("Tri inconnu : " + args[i] + " (champs : " + string.Join(", ", SortFields.Keys) + ")"); return 2; }
+                                    req.SortBy = key; req.SortDescending = desc;
+                                }
                                 else if (args[i] == "--dedup") req.HideDuplicates = true;
                                 else if (args[i] == "--att") req.OnlyWithAttachments = true;
                                 else if (args[i] == "--limit") req.Limit = int.Parse(args[++i]);
@@ -106,10 +116,44 @@ namespace PstBrowser.Cli
                         {
                             using var ws = Workspace.OpenOrCreate(wsDir);
                             using var ms = new MessageService(ws);
-                            var v = ms.GetView(MessageRef.Parse(args[2]), args.Length > 3 ? QueryParser.Parse(args[3]).HighlightTerms : null);
+                            string query = args.Length > 3 && !args[3].StartsWith("--") ? args[3] : null;
+                            var v = ms.GetView(MessageRef.Parse(args[2]), query != null ? QueryParser.Parse(query).HighlightTerms : null, query);
                             Console.WriteLine($"Objet : {v.Subject}\nDe : {v.From}\nÀ : {v.To}\nCc : {v.Cc}\nDate : {v.Date}\nType : {v.Kind} ({v.MessageClass})\nBoîte : {v.Mailbox} / {v.FolderPath}\nFormat : {v.BodyFormat}");
-                            foreach (var a in v.Attachments) Console.WriteLine($"  PJ [{a.Index}] {a.FileName} {a.SizeText}{(a.IsEmbeddedMessage ? " (message)" : "")}");
+                            foreach (var a in v.Attachments)
+                                Console.WriteLine($"  PJ [{a.Index}] {a.FileName} {a.SizeText}{(a.IsEmbeddedMessage ? " (message)" : "")}" +
+                                                  (a.TextStatus != null ? $" — texte : {PstBrowser.Core.Extraction.AttachmentStatus.Label(a.TextStatus)}" + (a.HasText ? $" ({a.TextLength:N0} car.)" : "") : "") +
+                                                  (a.HasHit ? " — CONTIENT LES TERMES RECHERCHÉS" : "") + (a.Sha256 != null ? " — SHA-256 " + a.Sha256 : ""));
+                            if (args.Contains("--att-text"))
+                            {
+                                var at = ms.GetAttachmentText(MessageRef.Parse(args[2]).Id, args[Array.IndexOf(args, "--att-text") + 1]);
+                                Console.WriteLine(at == null ? "(pièce jointe absente de l'index)" : $"--- texte de {at.Name} ({at.Status}) ---\n{at.Text}");
+                            }
                             if (args.Contains("--html")) { var path = args[Array.IndexOf(args, "--html") + 1]; File.WriteAllText(path, v.BodyHtml); Console.WriteLine("HTML → " + path); }
+                            return 0;
+                        }
+                    case "attachments":
+                        {
+                            // Inventory of the attachments indexed in pass 3: status and SHA-256 of each file
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var db = ws.Open();
+                            var st = db.Prepare(@"SELECT a.message_id, a.idx_path, a.name, a.size, a.status, a.sha256, a.text_len, a.error FROM attachments a ORDER BY a.message_id, a.idx_path");
+                            var rows = new System.Collections.Generic.List<string[]>();
+                            while (st.Step())
+                                rows.Add(new[] { st.GetString(0), st.GetString(1), st.GetString(2), st.GetString(3), st.GetString(4), st.GetString(5), st.GetString(6), st.GetString(7) });
+                            st.Reset();
+                            int ci = Array.IndexOf(args, "--csv");
+                            if (ci > 0 && ci + 1 < args.Length)
+                            {
+                                using var w = new StreamWriter(args[ci + 1], false, new System.Text.UTF8Encoding(true));
+                                w.WriteLine("Message;Position;Nom;Taille;Statut;SHA-256;Caractères;Erreur");
+                                foreach (var r in rows) w.WriteLine(string.Join(";", r.Select(x => "\"" + (x ?? "").Replace("\"", "\"\"") + "\"")));
+                                Console.WriteLine($"{rows.Count} pièce(s) jointe(s) → {args[ci + 1]}");
+                            }
+                            else
+                            {
+                                foreach (var g in rows.GroupBy(r => r[4])) Console.WriteLine($"{PstBrowser.Core.Extraction.AttachmentStatus.Label(g.Key)} : {g.Count():N0}");
+                                Console.WriteLine($"{rows.Count:N0} pièce(s) jointe(s) au total.");
+                            }
                             return 0;
                         }
                     case "save-att":
@@ -146,22 +190,36 @@ namespace PstBrowser.Cli
             }
         }
 
+        /// <summary>Diagnostics: shows what the attachment extractor reads from a file (in this process, without the worker).</summary>
+        private static int ExtractFile(string path)
+        {
+            var sw = Stopwatch.StartNew();
+            var r = PstBrowser.Core.Extraction.TextExtractor.Extract(Path.GetFileName(path), File.ReadAllBytes(path));
+            Console.WriteLine($"{PstBrowser.Core.Extraction.AttachmentStatus.Label(r.Status)} — {r.Text.Length:N0} caractères — {sw.ElapsedMilliseconds} ms {r.Error}");
+            Console.WriteLine(r.Text.Length > 3000 ? r.Text.Substring(0, 3000) + "…" : r.Text);
+            return 0;
+        }
+
         private static int Usage()
         {
             Console.WriteLine(@"pstbrowser-cli — moteur PstBrowser en ligne de commande (SQLite " + SqliteDb.Version + @")
 
   add      <dossier-affaire> <fichier.pst|fichier.msg|dossier>...   ajoute des sources
-  index    <dossier-affaire> [--parallel N] [--sha256]               indexe (reprend là où il s'était arrêté)
+  index    <dossier-affaire> [--parallel N] [--sha256] [--no-attachments] [--attachment-timeout S]
+                                                                     indexe (reprend là où il s'était arrêté) ; les pièces jointes sont lues dans un processus séparé
+  attachments <dossier-affaire> [--csv fichier.csv]                  inventaire des pièces jointes (statut, SHA-256)
+  extract-file <fichier>                                             affiche le texte que l'extracteur lit dans un fichier
   sources  <dossier-affaire>                                         liste les sources
   tree     <dossier-affaire>                                         arborescence des boîtes
-  search   <dossier-affaire> ""requête"" [--sort DateDesc|DateAsc|Relevance] [--dedup] [--att] [--limit N] [--csv fichier.csv]
+  search   <dossier-affaire> ""requête"" [--sort champ[:asc|:desc]] [--dedup] [--att] [--limit N] [--csv fichier.csv]
   show     <dossier-affaire> <id[-pj-pj]> [""termes""] [--html fichier.html]
   save-att <dossier-affaire> <id[-pj]> <index-pj> <fichier>
   eml      <dossier-affaire> <id[-pj]> <fichier.eml>
   remove   <dossier-affaire> <id-source>
 
 Syntaxe de recherche : mots (ET implicite), ""expression exacte"", mot*, a OR b, -exclu,
-  de: à: objet: corps: pj:   avant:AAAA-MM-JJ  apres:AAAA-MM-JJ");
+  de: à: objet: corps: pj: (noms de pièces jointes)  pjtexte: (contenu des pièces jointes)  avant:AAAA-MM-JJ  apres:AAAA-MM-JJ
+Chaque mot doit se trouver dans le message OU dans l'une de ses pièces jointes ; de: à: objet: corps: ne regardent que le message.");
             return 1;
         }
     }

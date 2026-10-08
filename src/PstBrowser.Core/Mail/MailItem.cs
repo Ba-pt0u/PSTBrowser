@@ -53,6 +53,11 @@ namespace PstBrowser.Core.Mail
         /// <summary>0 low, 1 normal, 2 high</summary>
         int Importance { get; }
         bool HasAttachmentsFlag { get; }
+        /// <summary>PidTagConversationTopic (normalised subject shared by the messages of a conversation).</summary>
+        string ConversationTopic { get; }
+        bool IsRead { get; }
+        /// <summary>PidTagFlagStatus: 0 none, 1 complete, 2 flagged.</summary>
+        int FlagStatus { get; }
         string TransportHeaders { get; }
         IReadOnlyList<RecipientInfo> Recipients { get; }
 

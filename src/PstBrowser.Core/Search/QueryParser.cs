@@ -2,43 +2,129 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 
 namespace PstBrowser.Core.Search
 {
+    /// <summary>Part of a message a search term is restricted to.</summary>
+    public enum QueryField
+    {
+        /// <summary>No field: message (subject, people, body, attachment names) and attachments (names, contents).</summary>
+        Any,
+        From,
+        Recipients,
+        Subject,
+        Body,
+        /// <summary>Names of the attachments (message side and attachment side).</summary>
+        AttachmentName,
+        /// <summary>Extracted contents of the attachments only (<c>pjtexte:</c>).</summary>
+        AttachmentText,
+    }
+
+    /// <summary>One search term: a word or a phrase, optionally a prefix, optionally restricted to a field.</summary>
+    public sealed class QueryTerm
+    {
+        public string Text { get; set; }
+        public bool Phrase { get; set; }
+        public bool Prefix { get; set; }
+        public QueryField Field { get; set; }
+
+        /// <summary>The quoted FTS5 phrase (without any column filter).</summary>
+        public string FtsPhrase => "\"" + Text + "\"" + (Prefix ? "*" : "");
+
+        /// <summary>Expression for the message full-text index, or null when the term does not apply to messages.</summary>
+        public string MessageExpression()
+        {
+            switch (Field)
+            {
+                case QueryField.Any: return FtsPhrase;
+                case QueryField.From: return "sender:" + FtsPhrase;
+                case QueryField.Recipients: return "recipients:" + FtsPhrase;
+                case QueryField.Subject: return "subject:" + FtsPhrase;
+                case QueryField.Body: return "body:" + FtsPhrase;
+                case QueryField.AttachmentName: return "attachments:" + FtsPhrase;
+                default: return null;
+            }
+        }
+
+        /// <summary>Expression for the attachment full-text index (name, content), or null when the term only concerns the message.</summary>
+        public string AttachmentExpression()
+        {
+            switch (Field)
+            {
+                case QueryField.Any: return FtsPhrase;
+                case QueryField.AttachmentName: return "name:" + FtsPhrase;
+                case QueryField.AttachmentText: return "content:" + FtsPhrase;
+                default: return null;
+            }
+        }
+    }
+
     /// <summary>
-    /// Parses the user's search syntax into an FTS5 MATCH expression.
-    ///   mots simples            → all words must match (AND), accents and case ignored
+    /// A condition every result must satisfy: one of the alternatives (<c>a OR b</c>) matches.
+    /// A negated clause (<c>-word</c>) excludes the messages it matches.
+    /// </summary>
+    public sealed class QueryClause
+    {
+        public List<QueryTerm> Alternatives { get; } = new List<QueryTerm>();
+        public bool Negated { get; set; }
+
+        private static string Join(IEnumerable<string> parts)
+        {
+            var list = parts.Where(p => p != null).ToList();
+            if (list.Count == 0) return null;
+            return list.Count == 1 ? list[0] : "(" + string.Join(" OR ", list) + ")";
+        }
+
+        /// <summary>FTS5 expression on the message index (alternatives that do not apply to messages are left out), or null.</summary>
+        public string MessageExpression() => Join(Alternatives.Select(a => a.MessageExpression()));
+
+        /// <summary>FTS5 expression on the attachment index, or null.</summary>
+        public string AttachmentExpression() => Join(Alternatives.Select(a => a.AttachmentExpression()));
+    }
+
+    /// <summary>
+    /// Structured form of the user's search syntax.
+    ///   mots simples            → every word is required (AND), accents and case ignored
     ///   "expression exacte"     → phrase
     ///   mot*                    → prefix
     ///   a OR b  (ou a OU b)     → either
     ///   -mot                    → exclusion
-    ///   de:/from:  à:/to:  objet:/subject:  corps:/body:  pj:/attachment:   → restricts to a field
-    ///   avant:/before:AAAA-MM-JJ   apres:/after:AAAA-MM-JJ                     → date filters
+    ///   de:/from:  à:/to:  objet:/subject:  corps:/body:      → restricts the term to that part of the message
+    ///   pj:/attachment:                                       → attachment names
+    ///   pjtexte:/attachmenttext:                              → contents of the attachments only
+    ///   avant:/before:AAAA-MM-JJ   apres:/after:AAAA-MM-JJ    → date filters
+    /// Each positive clause must be found in the message OR in one of its attachments (family search).
     /// </summary>
     public sealed class ParsedQuery
     {
-        public string Fts { get; set; }
+        /// <summary>Clauses that must all be satisfied.</summary>
+        public List<QueryClause> Positive { get; } = new List<QueryClause>();
+        /// <summary>Exclusions; each one removes the messages (and families) it matches.</summary>
+        public List<QueryClause> Negative { get; } = new List<QueryClause>();
         public List<string> HighlightTerms { get; } = new List<string>();
         public DateTime? After { get; set; }
         public DateTime? Before { get; set; }
-        public bool IsEmpty => string.IsNullOrEmpty(Fts);
+        /// <summary>No positive term: FTS5 cannot evaluate a purely negative query.</summary>
+        public bool IsEmpty => Positive.Count == 0;
     }
 
     public static class QueryParser
     {
-        private static readonly Dictionary<string, string> Fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly Dictionary<string, QueryField> Fields = new Dictionary<string, QueryField>(StringComparer.OrdinalIgnoreCase)
         {
-            ["from"] = "sender", ["de"] = "sender", ["expediteur"] = "sender", ["expéditeur"] = "sender",
-            ["to"] = "recipients", ["a"] = "recipients", ["à"] = "recipients", ["cc"] = "recipients", ["dest"] = "recipients", ["destinataire"] = "recipients",
-            ["subject"] = "subject", ["objet"] = "subject", ["sujet"] = "subject",
-            ["body"] = "body", ["corps"] = "body", ["texte"] = "body",
-            ["attachment"] = "attachments", ["attach"] = "attachments", ["pj"] = "attachments", ["fichier"] = "attachments",
+            ["from"] = QueryField.From, ["de"] = QueryField.From, ["expediteur"] = QueryField.From, ["expéditeur"] = QueryField.From,
+            ["to"] = QueryField.Recipients, ["a"] = QueryField.Recipients, ["à"] = QueryField.Recipients, ["cc"] = QueryField.Recipients,
+            ["dest"] = QueryField.Recipients, ["destinataire"] = QueryField.Recipients,
+            ["subject"] = QueryField.Subject, ["objet"] = QueryField.Subject, ["sujet"] = QueryField.Subject,
+            ["body"] = QueryField.Body, ["corps"] = QueryField.Body, ["texte"] = QueryField.Body,
+            ["attachment"] = QueryField.AttachmentName, ["attach"] = QueryField.AttachmentName, ["pj"] = QueryField.AttachmentName, ["fichier"] = QueryField.AttachmentName,
+            ["attachmenttext"] = QueryField.AttachmentText, ["pjtexte"] = QueryField.AttachmentText, ["pjcontenu"] = QueryField.AttachmentText,
+            ["contenupj"] = QueryField.AttachmentText,
         };
 
         private sealed class Tok
         {
-            public string Field; public string Text; public bool Phrase; public bool Prefix; public bool Negated; public bool IsOr;
+            public QueryField Field; public string Text; public bool Phrase; public bool Prefix; public bool Negated; public bool IsOr;
         }
 
         public static ParsedQuery Parse(string input)
@@ -47,41 +133,43 @@ namespace PstBrowser.Core.Search
             if (string.IsNullOrWhiteSpace(input)) return result;
             var toks = Tokenize(input, result);
 
-            var positives = new List<string>(); // already combined with ORs
-            var negatives = new List<string>();
             bool pendingOr = false;
             foreach (var t in toks)
             {
-                if (t.IsOr) { pendingOr = positives.Count > 0; continue; }
-                var expr = ToFts(t);
-                if (expr == null) continue;
-                if (t.Negated) { negatives.Add(expr); pendingOr = false; continue; }
-                if (pendingOr && positives.Count > 0)
+                if (t.IsOr) { pendingOr = result.Positive.Count > 0; continue; }
+                var term = ToTerm(t);
+                if (term == null) continue;
+                if (t.Negated)
                 {
-                    positives[positives.Count - 1] = "(" + Unwrap(positives[positives.Count - 1]) + " OR " + expr + ")";
+                    var neg = new QueryClause { Negated = true };
+                    neg.Alternatives.Add(term);
+                    result.Negative.Add(neg);
+                    pendingOr = false;
+                    continue;
+                }
+                if (pendingOr && result.Positive.Count > 0)
+                {
+                    result.Positive[result.Positive.Count - 1].Alternatives.Add(term);
                     pendingOr = false;
                 }
-                else positives.Add(expr);
-                foreach (var w in t.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-                    result.HighlightTerms.Add(w + (t.Prefix ? "*" : ""));
+                else
+                {
+                    var c = new QueryClause();
+                    c.Alternatives.Add(term);
+                    result.Positive.Add(c);
+                }
+                foreach (var w in term.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    result.HighlightTerms.Add(w + (term.Prefix ? "*" : ""));
             }
-            if (positives.Count == 0) return result; // FTS5 cannot evaluate a purely negative query
-            var sb = new StringBuilder(string.Join(" AND ", positives));
-            foreach (var n in negatives) sb.Append(" NOT ").Append(n);
-            result.Fts = sb.ToString();
             return result;
         }
 
-        private static string Unwrap(string s) => s.StartsWith("(") && s.EndsWith(")") ? s.Substring(1, s.Length - 2) : s;
-
-        private static string ToFts(Tok t)
+        private static QueryTerm ToTerm(Tok t)
         {
-            // Keep only characters that matter to the tokenizer; quotes are escaped by doubling.
+            // Keep only characters that matter to the tokenizer; the phrase is quoted, so FTS5 operators are harmless.
             var text = t.Text.Replace("\"", " ").Trim();
-            if (text.Length == 0) return null;
-            if (!text.Any(char.IsLetterOrDigit)) return null;
-            string phrase = "\"" + text + "\"" + (t.Prefix ? "*" : "");
-            return t.Field != null ? t.Field + ":" + phrase : phrase;
+            if (text.Length == 0 || !text.Any(char.IsLetterOrDigit)) return null;
+            return new QueryTerm { Text = text, Phrase = t.Phrase, Prefix = t.Prefix, Field = t.Field };
         }
 
         private static List<Tok> Tokenize(string s, ParsedQuery q)
@@ -116,9 +204,9 @@ namespace PstBrowser.Core.Search
                             continue;
                         }
                     }
-                    else if (Fields.TryGetValue(name, out var col))
+                    else if (Fields.TryGetValue(name, out var field))
                     {
-                        t.Field = col;
+                        t.Field = field;
                         i = colon + 1;
                     }
                 }
@@ -136,7 +224,7 @@ namespace PstBrowser.Core.Search
                     int start = i;
                     while (i < s.Length && !char.IsWhiteSpace(s[i])) i++;
                     var w = s.Substring(start, i - start);
-                    if (!t.Negated && t.Field == null && (w == "OR" || w == "OU" || w == "|"))
+                    if (!t.Negated && t.Field == QueryField.Any && (w == "OR" || w == "OU" || w == "|"))
                     {
                         list.Add(new Tok { IsOr = true });
                         continue;

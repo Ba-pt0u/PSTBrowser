@@ -111,6 +111,15 @@ namespace PstBrowser.Core.Mail
             InitEncoding();
         }
 
+        /// <summary>Opens a .msg held in memory or in any seekable stream (the stream is disposed with the item).</summary>
+        public MsgMailItem(Stream stream)
+        {
+            _cf = new CompoundFile(stream, true);
+            _ownsFile = true;
+            _p = new MsgPropertyBag(_cf, _cf.Root, 32);
+            InitEncoding();
+        }
+
         private MsgMailItem(CompoundFile cf, CompoundFile.Entry storage)
         {
             _cf = cf;
@@ -139,6 +148,9 @@ namespace PstBrowser.Core.Mail
         public int Importance => _p.Int(PstMailItem.TagImportance) ?? 1;
         public bool HasAttachmentsFlag => (_p.Int(PstMailItem.TagFlags) is int f && (f & 0x10) != 0) || AttachmentsRaw.Count > 0;
         public string TransportHeaders => _p.String(PstMailItem.TagHeaders);
+        public string ConversationTopic => S(PstMailItem.TagConversationTopic);
+        public bool IsRead => _p.Int(PstMailItem.TagFlags) is int f && (f & 0x1) != 0;
+        public int FlagStatus => _p.Int(PstMailItem.TagFlagStatus) ?? 0;
 
         public IReadOnlyList<RecipientInfo> Recipients
         {

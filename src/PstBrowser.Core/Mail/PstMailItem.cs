@@ -28,6 +28,7 @@ namespace PstBrowser.Core.Mail
             TagDelivery = 0x0E06, TagSubmit = 0x0039, TagCreation = 0x3007, TagSize = 0x0E08, TagFlags = 0x0E07,
             TagClass = 0x001A, TagImportance = 0x0017, TagMessageId = 0x1035, TagInReplyTo = 0x1042,
             TagHeaders = 0x007D, TagBody = 0x1000, TagHtml = 0x1013, TagRtf = 0x1009, TagCodepage = 0x3FDE,
+            TagConversationTopic = 0x0070, TagFlagStatus = 0x1090,
             TagDisplayTo = 0x0E04, TagDisplayCc = 0x0E03, TagDisplayBcc = 0x0E02,
             // recipients
             TagRecipType = 0x0C15, TagDisplayName = 0x3001, TagEmailAddress = 0x3003, TagSmtpAddress = 0x39FE,
@@ -65,6 +66,9 @@ namespace PstBrowser.Core.Mail
         public int Importance => V(TagImportance) is int i ? i : 1;
         public bool HasAttachmentsFlag => V(TagFlags) is int f && (f & 0x10) != 0;
         public string TransportHeaders => V(TagHeaders) as string;
+        public string ConversationTopic => S(TagConversationTopic);
+        public bool IsRead => V(TagFlags) is int f && (f & 0x1) != 0;
+        public int FlagStatus => V(TagFlagStatus) is int i ? i : 0;
 
         internal static string FirstSmtp(params string[] candidates)
         {

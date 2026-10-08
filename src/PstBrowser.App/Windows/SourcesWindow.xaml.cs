@@ -37,6 +37,7 @@ namespace PstBrowser.App.Windows
             int par = int.TryParse(ws.GetMeta("parallelism"), out var p) ? p : 2;
             CmbParallel.SelectedIndex = Math.Max(0, Math.Min(3, par - 1));
             ChkSha.IsChecked = ws.GetMeta("sha256") == "1";
+            ChkAttachments.IsChecked = ws.AttachmentIndexingEnabled;
             _loading = false;
             Reload();
         }
@@ -122,6 +123,7 @@ namespace PstBrowser.App.Windows
             if (_loading || AppServices.Workspace == null) return;
             AppServices.Workspace.SetMeta("parallelism", (CmbParallel.SelectedIndex + 1).ToString());
             AppServices.Workspace.SetMeta("sha256", ChkSha.IsChecked == true ? "1" : "0");
+            AppServices.Workspace.AttachmentIndexingEnabled = ChkAttachments.IsChecked == true;
             Changed = true;
         }
 

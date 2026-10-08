@@ -1,0 +1,2 @@
+https://github.com/erdomke/RtfPipe  commit 9851ab97d693037073d567d74346184ae2f3d4b3
+MIT. Sources sans modification, sauf les fichiers marqués « PstBrowser modification ».

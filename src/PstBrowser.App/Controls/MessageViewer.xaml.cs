@@ -19,6 +19,7 @@ namespace PstBrowser.App.Controls
         private readonly SecureWebView _secure;
         private MessageView _view;
         private IList<string> _terms;
+        private string _query;
         private int _loadId;
         private readonly Stack<MessageRef> _history = new Stack<MessageRef>();
 
@@ -65,9 +66,10 @@ namespace PstBrowser.App.Controls
             TxtPlaceholder.Visibility = Visibility.Visible;
         }
 
-        public Task ShowAsync(MessageRef mref, IList<string> highlightTerms)
+        public Task ShowAsync(MessageRef mref, IList<string> highlightTerms, string query = null)
         {
             _history.Clear();
+            _query = query;
             return LoadAsync(mref, highlightTerms);
         }
 
@@ -80,7 +82,7 @@ namespace PstBrowser.App.Controls
             MessageView view;
             try
             {
-                view = await Task.Run(() => svc.GetView(mref, highlightTerms));
+                view = await Task.Run(() => svc.GetView(mref, highlightTerms, _query));
             }
             catch (Exception ex)
             {
@@ -124,20 +126,30 @@ namespace PstBrowser.App.Controls
             AttachmentsList.Children.Clear();
             foreach (var a in v.Attachments)
             {
+                var tip = a.IsEmbeddedMessage ? "Message joint : cliquer pour l'ouvrir" : $"{a.FileName} ({a.SizeText})";
+                if (a.TextStatus != null && !a.IsEmbeddedMessage) tip += "\nTexte : " + PstBrowser.Core.Extraction.AttachmentStatus.Label(a.TextStatus) + (a.HasText ? $" ({a.TextLength:N0} caractères)" : "");
+                if (a.HasHit) tip += "\nContient les termes recherchés";
                 var btn = new Button
                 {
                     Style = (Style)FindResource("ToolButton"),
                     Margin = new Thickness(0, 0, 6, 6),
                     Tag = a,
-                    ToolTip = a.IsEmbeddedMessage ? "Message joint : cliquer pour l'ouvrir" : $"{a.FileName} ({a.SizeText})",
+                    ToolTip = tip,
                     Content = new TextBlock
                     {
-                        Text = (a.IsEmbeddedMessage ? "✉  " : "📄  ") + a.FileName + (a.IsEmbeddedMessage ? "" : "   " + a.SizeText),
-                        MaxWidth = 320,
+                        Text = (a.HasHit ? "🔎 " : "") + (a.IsEmbeddedMessage ? "✉  " : "📄  ") + a.FileName + (a.IsEmbeddedMessage ? "" : "   " + a.SizeText),
+                        MaxWidth = 340,
                         TextTrimming = TextTrimming.CharacterEllipsis,
+                        FontWeight = a.HasHit ? FontWeights.SemiBold : FontWeights.Normal,
                     },
                 };
-                System.Windows.Automation.AutomationProperties.SetName(btn, a.FileName);
+                if (a.HasHit)
+                {
+                    btn.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
+                    btn.BorderThickness = new Thickness(2);
+                    btn.Background = (System.Windows.Media.Brush)FindResource("AccentLightBrush");
+                }
+                System.Windows.Automation.AutomationProperties.SetName(btn, (a.HasHit ? "Contient les termes recherchés : " : "") + a.FileName);
                 btn.Click += Attachment_Click;
                 AttachmentsList.Children.Add(btn);
             }
@@ -169,9 +181,38 @@ namespace PstBrowser.App.Controls
             open.Click += (_, __) => OpenAttachment(a);
             var save = new MenuItem { Header = "Enregistrer sous…" };
             save.Click += (_, __) => SaveAttachment(a);
+            var preview = new MenuItem { Header = "Aperçu du texte", IsEnabled = a.HasText,
+                                         ToolTip = a.HasText ? "Texte extrait de la pièce jointe, avec les termes recherchés surlignés" : "Aucun texte extrait : " + (a.TextStatus != null ? PstBrowser.Core.Extraction.AttachmentStatus.Label(a.TextStatus) : "pièce jointe non indexée") };
+            preview.Click += (_, __) => PreviewAttachmentText(a);
+            menu.Items.Add(preview);
             menu.Items.Add(open);
             menu.Items.Add(save);
+            if (!string.IsNullOrEmpty(a.Sha256))
+            {
+                var sha = new MenuItem { Header = "Copier l'empreinte SHA-256" };
+                sha.Click += (_, __) => { try { Clipboard.SetText(a.Sha256); } catch { } };
+                menu.Items.Add(sha);
+            }
             menu.IsOpen = true;
+        }
+
+        private void PreviewAttachmentText(AttachmentView a)
+        {
+            var mref = _view.Ref;
+            var terms = _terms;
+            var owner = Window.GetWindow(this);
+            Task.Run(() => AppServices.Messages.GetAttachmentText(mref.Id, a.IdxPath)).ContinueWith(t =>
+                Dispatcher.Invoke(() =>
+                {
+                    if (t.IsFaulted || t.Result == null)
+                    {
+                        MessageBox.Show(owner, "Le texte de cette pièce jointe n'est pas disponible dans l'index.", "Aperçu du texte", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    var at = t.Result;
+                    var note = $"Texte extrait de « {at.Name} » ({at.Text.Length:N0} caractères) — ce n'est pas le document d'origine : la mise en page, les images et les formules ne sont pas reprises.";
+                    AttachmentTextWindow.Open(at.Name, BodyRenderer.RenderText(at.Name, note, at.Text, terms), owner);
+                }));
         }
 
         private void SaveAttachment(AttachmentView a)

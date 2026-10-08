@@ -19,6 +19,13 @@
                 <TextBlock Text="(1 sur disque dur, 2 à 4 sur SSD)" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="6,0,20,0"/>
                 <CheckBox x:Name="ChkSha" Content="Calculer l'empreinte SHA-256 des fichiers (traçabilité)" VerticalAlignment="Center" Click="Options_Changed"/>
             </WrapPanel>
+            <StackPanel Margin="0,0,0,8">
+                <CheckBox x:Name="ChkAttachments" VerticalAlignment="Center" Click="Options_Changed"
+                          Content="Indexer le contenu des pièces jointes (PDF, Word, Excel, PowerPoint, OpenDocument, archives ZIP, texte…)"
+                          ToolTip="Étape supplémentaire après l'indexation des messages : le texte des pièces jointes devient recherchable (pjtexte:) et l'empreinte SHA-256 de chaque pièce jointe est calculée. Elle s'exécute dans un processus séparé protégé par un délai maximal par fichier."/>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="20,2,0,0" TextWrapping="Wrap"
+                           Text="Les fichiers de plus de 50 Mo, chiffrés ou d'un format non pris en charge sont signalés dans l'index mais leur contenu n'est pas lu. Les images scannées ne sont pas reconnues (pas d'OCR). Désactiver cette option accélère l'indexation."/>
+            </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Réindexer" Style="{StaticResource ToolButton}" Click="Reindex_Click" ToolTip="Supprime l'index de la source sélectionnée et la réindexe entièrement"/>
                 <Button Content="Retirer du dossier" Style="{StaticResource ToolButton}" Click="Remove_Click" ToolTip="Retire la source de l'index (le fichier n'est pas supprimé)"/>

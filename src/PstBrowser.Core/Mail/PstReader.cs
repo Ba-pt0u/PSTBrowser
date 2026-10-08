@@ -29,6 +29,7 @@ namespace PstBrowser.Core.Mail
         public DateTime? Date { get; set; }
         public long Size { get; set; }
         public bool HasAttachments { get; set; }
+        public bool IsRead { get; set; }
         public string MessageClass { get; set; }
         public int Importance { get; set; }
     }
@@ -146,7 +147,9 @@ namespace PstBrowser.Core.Mail
                     row.Date = (Val(m, PstMailItem.TagDelivery) as DateTime?) ?? (Val(m, PstMailItem.TagSubmit) as DateTime?);
                     var size = Val(m, PstMailItem.TagSize);
                     row.Size = size is int si ? si : 0;
-                    row.HasAttachments = Val(m, PstMailItem.TagFlags) is int fl && (fl & 0x10) != 0;
+                    var flags = Val(m, PstMailItem.TagFlags) as int?;
+                    row.HasAttachments = flags.HasValue && (flags.Value & 0x10) != 0;
+                    row.IsRead = flags.HasValue && (flags.Value & 0x1) != 0;
                     row.MessageClass = Str(m, PstMailItem.TagClass);
                     row.Importance = Val(m, PstMailItem.TagImportance) is int imp ? imp : 1;
                 }

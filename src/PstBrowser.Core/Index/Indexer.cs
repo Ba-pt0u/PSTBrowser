@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using PstBrowser.Core.Data;
+using PstBrowser.Core.Extraction;
 using PstBrowser.Core.Mail;
 using PstBrowser.Core.Text;
 
@@ -35,15 +36,23 @@ namespace PstBrowser.Core.Index
         public int BatchSize { get; set; } = 250;
         /// <summary>Re-open the PST periodically to release XstReader caches on very large files.</summary>
         public int ReopenEvery { get; set; } = 25_000;
+        /// <summary>Pass 3: extract and index the text of attachments (also requires the case option, on by default).</summary>
+        public bool IndexAttachments { get; set; } = true;
+        /// <summary>Longest time one attachment may take in the extraction worker before it is killed and restarted.</summary>
+        public int AttachmentTimeoutSeconds { get; set; } = 60;
+        public ExtractLimits AttachmentLimits { get; set; } = new ExtractLimits();
+        /// <summary>How to start the extraction worker (default: this executable with --extract-worker).</summary>
+        public WorkerLaunch Worker { get; set; }
     }
 
     /// <summary>
     /// Indexes all pending sources of a workspace in the background.
     /// Pass 1 lists folders and message headers from the PST contents tables (fast: browsing is available quickly),
-    /// pass 2 reads each message (recipients, bodies, attachment names, embedded messages) into the full-text index.
-    /// Both passes are resumable: progress is committed in small transactions.
+    /// pass 2 reads each message (recipients, bodies, attachment names, embedded messages) into the full-text index,
+    /// pass 3 (optional) extracts the text of the attachments in a separate worker process.
+    /// All passes are resumable: progress is committed in small transactions.
     /// </summary>
-    public sealed class Indexer
+    public sealed partial class Indexer
     {
         private readonly Workspace _ws;
         private readonly IndexerOptions _opt;
@@ -124,33 +133,44 @@ namespace PstBrowser.Core.Index
             try
             {
                 var sources = _ws.ListSources().Where(s => s.Status != "done").ToList();
-                if (sources.Count == 0) { SetPhase("Index à jour"); return; }
+                bool attachments = _opt.IndexAttachments && _ws.AttachmentIndexingEnabled;
+                if (sources.Count == 0 && !(attachments && _ws.HasPendingAttachments())) { SetPhase("Index à jour"); return; }
 
-                // ---- pass 1: structure (all sources)
-                SetPhase("Lecture de la structure");
-                Interlocked.Exchange(ref _totalCounter, sources.Count);
-                Interlocked.Exchange(ref _doneCounter, 0);
-                await ForEachParallel(sources.Where(s => s.Kind == SourceKind.Pst), ct, s => ListPst(s, ct));
-                if (ct.IsCancellationRequested) return;
-
-                // ---- pass 2: content
-                long pending;
-                using (var db = _ws.Open())
+                if (sources.Count > 0)
                 {
-                    pending = db.ExecScalarLong("SELECT COUNT(*) FROM messages WHERE indexed=0");
-                    pending += sources.Where(s => s.Kind != SourceKind.Pst).Sum(s => EstimateMsgCount(s));
+                    // ---- pass 1: structure (all sources)
+                    SetPhase("Lecture de la structure");
+                    Interlocked.Exchange(ref _totalCounter, sources.Count);
+                    Interlocked.Exchange(ref _doneCounter, 0);
+                    await ForEachParallel(sources.Where(s => s.Kind == SourceKind.Pst), ct, s => ListPst(s, ct));
+                    if (ct.IsCancellationRequested) return;
+
+                    // ---- pass 2: content
+                    long pending;
+                    using (var db = _ws.Open())
+                    {
+                        pending = db.ExecScalarLong("SELECT COUNT(*) FROM messages WHERE indexed=0");
+                        pending += sources.Where(s => s.Kind != SourceKind.Pst).Sum(s => EstimateMsgCount(s));
+                    }
+                    Interlocked.Exchange(ref _totalCounter, pending);
+                    Interlocked.Exchange(ref _doneCounter, 0);
+                    _rateBase = 0;
+                    _rateWatch.Restart();
+                    SetPhase("Indexation du contenu");
+                    await ForEachParallel(sources, ct, s =>
+                    {
+                        if (s.Kind == SourceKind.Pst) IndexPstContent(s, ct);
+                        else IndexMsgSource(s, ct);
+                    });
+                    if (ct.IsCancellationRequested) { SetPhase("Indexation suspendue"); return; }
                 }
-                Interlocked.Exchange(ref _totalCounter, pending);
-                Interlocked.Exchange(ref _doneCounter, 0);
-                _rateBase = 0;
-                _rateWatch.Restart();
-                SetPhase("Indexation du contenu");
-                await ForEachParallel(sources, ct, s =>
+
+                // ---- pass 3: attachment contents (optional)
+                if (attachments)
                 {
-                    if (s.Kind == SourceKind.Pst) IndexPstContent(s, ct);
-                    else IndexMsgSource(s, ct);
-                });
-                if (ct.IsCancellationRequested) { SetPhase("Indexation suspendue"); return; }
+                    await AttachmentPass(ct);
+                    if (ct.IsCancellationRequested) { SetPhase("Indexation suspendue"); return; }
+                }
 
                 // ---- integrity hashes (optional, after indexing so that browsing is not delayed)
                 if (_opt.ComputeSha256)
@@ -167,6 +187,7 @@ namespace PstBrowser.Core.Index
                 {
                     using var db = _ws.Open();
                     db.Exec("INSERT INTO fts(fts) VALUES('optimize')");
+                    db.Exec("INSERT INTO att_fts(att_fts) VALUES('optimize')");
                     db.Exec("PRAGMA optimize");
                     db.Exec("PRAGMA wal_checkpoint(TRUNCATE)");
                 }
@@ -186,7 +207,7 @@ namespace PstBrowser.Core.Index
             }
         }
 
-        private Task ForEachParallel(IEnumerable<SourceInfo> items, CancellationToken ct, Action<SourceInfo> body)
+        private Task ForEachParallel(IEnumerable<SourceInfo> items, CancellationToken ct, Action<SourceInfo> body, bool markSourceError = true)
         {
             var po = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, _opt.Parallelism), CancellationToken = ct };
             return Task.Run(() =>
@@ -200,7 +221,8 @@ namespace PstBrowser.Core.Index
                         catch (Exception ex)
                         {
                             ReportError($"{s.DisplayName}: {ex.Message}");
-                            try { using var db = _ws.Open(); db.Exec("UPDATE sources SET status='error', error=? WHERE id=?", ex.Message, s.Id); } catch { }
+                            if (markSourceError)
+                                try { using var db = _ws.Open(); db.Exec("UPDATE sources SET status='error', error=? WHERE id=?", ex.Message, s.Id); } catch { }
                         }
                     });
                 }
@@ -246,15 +268,17 @@ namespace PstBrowser.Core.Index
                 try
                 {
                     // a folder interrupted half-way is listed again from scratch
+                    db.Exec("DELETE FROM att_fts WHERE rowid IN (SELECT a.id FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.folder_id=?)", folderId);
+                    db.Exec("DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE folder_id=?)", folderId);
                     db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE folder_id=?)", folderId);
                     db.Exec("DELETE FROM messages WHERE folder_id=?", folderId);
-                    var ins = db.Prepare(@"INSERT INTO messages(source_id,folder_id,mailbox_id,nid,subject,sender_name,to_text,cc_text,date,size,has_att,msg_class,importance,indexed)
-                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0)");
+                    var ins = db.Prepare(@"INSERT INTO messages(source_id,folder_id,mailbox_id,nid,subject,sender_name,to_text,cc_text,date,size,has_att,msg_class,importance,is_read,indexed)
+                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)");
                     int n = 0;
                     foreach (var r in pst.ListMessages(f.Nid))
                     {
                         ins.Reset().BindAll(s.Id, folderId, s.MailboxId, (long)r.Nid, r.Subject, r.SenderName, r.DisplayTo, r.DisplayCc,
-                            r.Date.HasValue ? SqliteStmt.ToUnixMs(r.Date.Value) : (object)null, r.Size, r.HasAttachments, r.MessageClass, r.Importance);
+                            r.Date.HasValue ? SqliteStmt.ToUnixMs(r.Date.Value) : (object)null, r.Size, r.HasAttachments, r.MessageClass, r.Importance, r.IsRead);
                         ins.Run();
                         n++;
                         if ((n & 1023) == 0) ct.ThrowIfCancellationRequested();
@@ -275,9 +299,9 @@ namespace PstBrowser.Core.Index
         private sealed class Extracted
         {
             public long Id;
-            public string Subject, SenderName, SenderEmail, To, Cc, MessageId, Class, AttNames;
+            public string Subject, SenderName, SenderEmail, To, Cc, Bcc, MessageId, Class, AttNames, Topic;
             public string FtsSender, FtsRecipients, Body, Error;
-            public long? Date; public long Size; public bool HasAtt; public int AttCount; public int Importance;
+            public long? Date, Sent; public long Size; public bool HasAtt, IsRead; public int AttCount, Importance, Flag;
         }
 
         private void IndexPstContent(SourceInfo s, CancellationToken ct)
@@ -349,9 +373,15 @@ namespace PstBrowser.Core.Index
             };
             var d = m.Date;
             e.Date = d.HasValue ? SqliteStmt.ToUnixMs(d.Value) : (long?)null;
+            var sent = m.SentDate;
+            e.Sent = sent.HasValue ? SqliteStmt.ToUnixMs(sent.Value) : (long?)null;
+            e.Topic = m.ConversationTopic;
+            e.IsRead = m.IsRead;
+            e.Flag = m.FlagStatus;
             var recips = m.Recipients;
             e.To = Join(recips.Where(r => r.Kind == RecipientKind.To));
             e.Cc = Join(recips.Where(r => r.Kind == RecipientKind.Cc));
+            e.Bcc = Join(recips.Where(r => r.Kind == RecipientKind.Bcc));
             e.FtsSender = $"{m.SenderName} {m.SenderEmail}".Trim();
             e.FtsRecipients = string.Join(" ", recips.Select(r => $"{r.Name} {r.Email}"));
 
@@ -411,7 +441,8 @@ namespace PstBrowser.Core.Index
             {
                 var upd = db.Prepare(@"UPDATE messages SET subject=COALESCE(?,subject), sender_name=COALESCE(?,sender_name), sender_email=?, to_text=COALESCE(?,to_text),
                                        cc_text=COALESCE(?,cc_text), date=COALESCE(?,date), size=CASE WHEN ?>0 THEN ? ELSE size END, has_att=?, att_count=?, att_names=?,
-                                       msg_class=COALESCE(?,msg_class), importance=?, message_id=?, indexed=1, error=? WHERE id=?");
+                                       msg_class=COALESCE(?,msg_class), importance=?, message_id=?, indexed=1, error=?,
+                                       bcc_text=?, sent_date=?, conversation_topic=?, is_read=?, flag_status=? WHERE id=?");
                 var del = db.Prepare("DELETE FROM fts WHERE rowid=?");
                 var ins = db.Prepare("INSERT INTO fts(rowid,subject,sender,recipients,body,attachments) VALUES(?,?,?,?,?,?)");
                 foreach (var e in batch)
@@ -422,7 +453,8 @@ namespace PstBrowser.Core.Index
                         continue;
                     }
                     upd.Reset().BindAll(e.Subject, e.SenderName, e.SenderEmail, NullIfEmpty(e.To), NullIfEmpty(e.Cc), e.Date, e.Size, e.Size, e.HasAtt, e.AttCount,
-                        NullIfEmpty(e.AttNames), e.Class, e.Importance, e.MessageId, null, e.Id);
+                        NullIfEmpty(e.AttNames), e.Class, e.Importance, e.MessageId, null,
+                        NullIfEmpty(e.Bcc), e.Sent, e.Topic, e.IsRead, e.Flag, e.Id);
                     upd.Run();
                     del.Reset().Bind(1, e.Id).Run();
                     ins.Reset().BindAll(e.Id, e.Subject, e.FtsSender, e.FtsRecipients, e.Body, e.AttNames);
@@ -494,13 +526,15 @@ namespace PstBrowser.Core.Index
                 db.Begin();
                 try
                 {
-                    var ins = db.Prepare(@"INSERT INTO messages(source_id,folder_id,mailbox_id,file_path,subject,sender_name,sender_email,to_text,cc_text,date,size,has_att,att_count,att_names,msg_class,importance,message_id,indexed,error)
-                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)");
+                    var ins = db.Prepare(@"INSERT INTO messages(source_id,folder_id,mailbox_id,file_path,subject,sender_name,sender_email,to_text,cc_text,date,size,has_att,att_count,att_names,msg_class,importance,message_id,indexed,error,
+                                                              bcc_text,sent_date,conversation_topic,is_read,flag_status)
+                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)");
                     var fts = db.Prepare("INSERT INTO fts(rowid,subject,sender,recipients,body,attachments) VALUES(?,?,?,?,?,?)");
                     foreach (var (e, folderId, file) in batch)
                     {
                         ins.Reset().BindAll(s.Id, folderId, s.MailboxId, file, e.Subject ?? (e.Error != null ? Path.GetFileName(file) : null), e.SenderName, e.SenderEmail,
-                            NullIfEmpty(e.To), NullIfEmpty(e.Cc), e.Date, e.Size, e.HasAtt, e.AttCount, NullIfEmpty(e.AttNames), e.Class, e.Importance, e.MessageId, e.Error);
+                            NullIfEmpty(e.To), NullIfEmpty(e.Cc), e.Date, e.Size, e.HasAtt, e.AttCount, NullIfEmpty(e.AttNames), e.Class, e.Importance, e.MessageId, e.Error,
+                            NullIfEmpty(e.Bcc), e.Sent, e.Topic, e.IsRead, e.Flag);
                         ins.Run();
                         long id = db.LastInsertRowId;
                         if (e.Error == null)

@@ -85,7 +85,14 @@ namespace PstBrowser.App
 
         public long Id => Row.Id;
         public DateTime? Date => Row.Date;
+        private const string DateFormat = "dd/MM/yy HH:mm";
+        public string DateText => Row.Date?.ToString(DateFormat) ?? "";
+        public string SentText => Row.SentDate?.ToString(DateFormat) ?? "";
         public string From => Row.From;
+        public string SenderEmail => Row.SenderEmail;
+        public string To => Row.To;
+        public string Cc => Row.Cc;
+        public string Bcc => Row.Bcc;
         public string Subject => Row.Subject;
         public string SubjectText
         {
@@ -109,11 +116,23 @@ namespace PstBrowser.App
                 return i >= 0 ? p.Substring(i + 1) : p;
             }
         }
+        public string FolderPathText => Row.FolderPath;
+        public string SourceName => Row.SourceName;
         public string SizeText => Format.Size(Row.Size);
         public long Size => Row.Size;
         public bool HasAttachments => Row.HasAttachments;
         public string AttachmentMark => Row.HasAttachments ? "📎" : "";
+        public string AttachmentCountText => Row.AttachmentCount > 0 ? Row.AttachmentCount.ToString() : "";
+        public string AttachmentNames => Row.AttachmentNames;
+        public string KindText => Row.Kind;
+        public string ImportanceText => Row.Importance == 2 ? "Haute" : Row.Importance == 0 ? "Basse" : "";
         public bool IsDuplicate => Row.IsDuplicate;
+        public string DuplicateText => Row.IsDuplicate ? "oui" : "";
+        public string MessageId => Row.MessageId;
+        public string ConversationTopic => Row.ConversationTopic;
+        public string ReadText => Row.IsRead == true ? "Lu" : Row.IsRead == false ? "Non lu" : "";
+        public string FlagText => Row.FlagStatus == 2 ? "🚩 À suivre" : Row.FlagStatus == 1 ? "✔ Terminé" : "";
+        public bool IsUnread => Row.IsRead == false;
         public string TooltipText
         {
             get
