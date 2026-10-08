@@ -1,10 +1,16 @@
 name: Release
 
-# Publie une release GitHub quand un tag de version est poussé :
-#   git tag v1.0.0 && git push origin v1.0.0
+# Publie une release GitHub :
+#  - soit en poussant un tag de version :  git tag v1.0.0 && git push origin v1.0.0
+#  - soit depuis l'onglet Actions > Release > « Run workflow » en indiquant la version (le tag est alors créé).
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version à publier (ex. 1.0.0)'
+        required: true
 
 permissions:
   contents: write
@@ -28,9 +34,11 @@ jobs:
         id: v
         shell: pwsh
         run: |
-          $v = "${{ github.ref_name }}".TrimStart('v')
-          if ($v -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Tag de version invalide : ${{ github.ref_name }} (attendu : v1.2.3)" }
+          $raw = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
+          $v = $raw.Trim().TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Version invalide : $raw (attendu : 1.2.3)" }
           "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v" >> $env:GITHUB_OUTPUT
 
       - name: Compiler SQLite (MSVC)
         shell: cmd
@@ -94,5 +102,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "${{ github.ref_name }}" dist/PstBrowser.exe dist/pstbrowser-cli.exe dist/SHA256SUMS.txt
-          --title "PST Browser ${{ steps.v.outputs.version }}" --notes-file release-notes.md
+          gh release create "${{ steps.v.outputs.tag }}" dist/PstBrowser.exe dist/pstbrowser-cli.exe dist/SHA256SUMS.txt
+          --target "${{ github.sha }}" --title "PST Browser ${{ steps.v.outputs.version }}" --notes-file release-notes.md
