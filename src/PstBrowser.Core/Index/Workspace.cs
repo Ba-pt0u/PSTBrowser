@@ -80,7 +80,9 @@ namespace PstBrowser.Core.Index
         public SqliteDb Open()
         {
             var db = new SqliteDb(DbPath);
-            db.Exec("PRAGMA journal_mode=WAL");
+            // WAL needs shared memory, which network file systems do not provide reliably:
+            // on a network drive the classic rollback journal is used instead.
+            db.Exec(IsOnNetworkDrive(Folder) ? "PRAGMA journal_mode=DELETE" : "PRAGMA journal_mode=WAL");
             db.Exec("PRAGMA synchronous=NORMAL");
             db.Exec("PRAGMA temp_store=MEMORY");
             db.Exec("PRAGMA cache_size=-65536");
@@ -89,6 +91,18 @@ namespace PstBrowser.Core.Index
         }
 
         public SqliteDb Db => _db;
+
+        public static bool IsOnNetworkDrive(string folder)
+        {
+            try
+            {
+                var full = System.IO.Path.GetFullPath(folder);
+                if (full.StartsWith(@"\\") || full.StartsWith("//")) return true;
+                var root = System.IO.Path.GetPathRoot(full);
+                return !string.IsNullOrEmpty(root) && new DriveInfo(root).DriveType == DriveType.Network;
+            }
+            catch { return false; }
+        }
 
         private void EnsureSchema()
         {

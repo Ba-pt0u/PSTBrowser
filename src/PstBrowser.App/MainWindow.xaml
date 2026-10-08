@@ -20,9 +20,9 @@
         <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,7">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                    <Button Content="Exporter la liste (CSV)" Style="{StaticResource ToolButton}" Click="ExportCsv_Click" x:Name="BtnCsv" IsEnabled="False"
+                    <Button Content="Export CSV" Style="{StaticResource ToolButton}" Click="ExportCsv_Click" x:Name="BtnCsv" IsEnabled="False"
                             ToolTip="Exporte tous les résultats de la recherche courante dans un fichier CSV (Excel)"/>
-                    <Button Content="Exporter la sélection (.eml)" Style="{StaticResource ToolButton}" Click="ExportEmlSelection_Click" x:Name="BtnEmlSel" IsEnabled="False"
+                    <Button Content="Export .eml" Style="{StaticResource ToolButton}" Click="ExportEmlSelection_Click" x:Name="BtnEmlSel" IsEnabled="False"
                             ToolTip="Enregistre les messages sélectionnés dans un dossier, au format .eml"/>
                     <Button x:Name="BtnLayout" Content="Lecture en bas" Style="{StaticResource ToolButton}" Click="Layout_Click"
                             ToolTip="Afficher le volet de lecture à droite de la liste ou en dessous"/>
@@ -34,10 +34,10 @@
                             <Run Text="📁 "/><Run x:Name="RunCaseName" Text="Dossier d'affaire" FontWeight="SemiBold"/><Run Text="  ▾"/>
                         </TextBlock>
                     </Button>
-                    <Button Content="＋ Ajouter des fichiers PST / MSG" Style="{StaticResource ToolButton}" Click="AddFiles_Click" x:Name="BtnAddFiles" IsEnabled="False"/>
-                    <Button Content="＋ Ajouter un dossier" Style="{StaticResource ToolButton}" Click="AddFolder_Click" x:Name="BtnAddFolder" IsEnabled="False"
+                    <Button Content="＋ Fichiers PST / MSG" Style="{StaticResource ToolButton}" Click="AddFiles_Click" x:Name="BtnAddFiles" IsEnabled="False" ToolTip="Ajouter des fichiers PST, OST ou MSG (glisser-déposer possible)"/>
+                    <Button Content="＋ Dossier" Style="{StaticResource ToolButton}" Click="AddFolder_Click" x:Name="BtnAddFolder" IsEnabled="False"
                             ToolTip="Ajoute tous les fichiers PST/OST du dossier et de ses sous-dossiers, et les fichiers MSG qu'il contient"/>
-                    <Button Content="Sources…" Style="{StaticResource ToolButton}" Click="Sources_Click" x:Name="BtnSources" IsEnabled="False"/>
+                    <Button Content="Sources…" Style="{StaticResource ToolButton}" Click="Sources_Click" x:Name="BtnSources" IsEnabled="False" ToolTip="Liste des fichiers du dossier d'affaire, regroupement par boîte, options d'indexation"/>
                 </StackPanel>
             </DockPanel>
         </Border>

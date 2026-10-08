@@ -137,6 +137,7 @@ namespace PstBrowser.App.Controls
                         TextTrimming = TextTrimming.CharacterEllipsis,
                     },
                 };
+                System.Windows.Automation.AutomationProperties.SetName(btn, a.FileName);
                 btn.Click += Attachment_Click;
                 AttachmentsList.Items.Add(btn);
             }

@@ -91,6 +91,7 @@ namespace PstBrowser.App
                 ReaderSplitter.Width = double.NaN;
                 ReaderSplitter.Height = 5;
                 BtnLayout.Content = "Lecture à droite";
+                BtnLayout.ToolTip = "Afficher le volet de lecture à droite de la liste";
             }
             else
             {
@@ -103,6 +104,7 @@ namespace PstBrowser.App
                 ReaderSplitter.Height = double.NaN;
                 ReaderSplitter.Width = 5;
                 BtnLayout.Content = "Lecture en bas";
+                BtnLayout.ToolTip = "Afficher le volet de lecture sous la liste";
             }
         }
 
@@ -408,7 +410,11 @@ namespace PstBrowser.App
             foreach (var mb in mailboxes)
             {
                 var mbNode = new TreeNode { Key = "mb:" + mb.Id, Kind = NodeKind.Mailbox, MailboxId = mb.Id, Name = mb.Name, Count = mb.MessageCount, IsExpanded = true };
-                foreach (var f in ws.GetFolderTree(mb.Id, hideEmpty)) mbNode.Children.Add(ToNode(f, mb.Id));
+                var roots = ws.GetFolderTree(mb.Id, hideEmpty);
+                // Skip technical wrapper levels ("Top of Personal Folders", "Root - Mailbox/IPM_SUBTREE"…):
+                // an empty folder that is the only top-level folder is replaced by its sub-folders.
+                while (roots.Count == 1 && roots[0].Count == 0 && roots[0].Children.Count > 0) roots = roots[0].Children;
+                foreach (var f in roots) mbNode.Children.Add(ToNode(f, mb.Id));
                 all.Children.Add(mbNode);
             }
             TreeNode.Merge(_treeRoots, new List<TreeNode> { all }, null);

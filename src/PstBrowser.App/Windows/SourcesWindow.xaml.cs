@@ -74,16 +74,12 @@ namespace PstBrowser.App.Windows
             if (!(e.EditingElement is TextBox tb)) return;
             var name = tb.Text.Trim();
             if (name.Length == 0 || name == row.OriginalMailbox) return;
-            try
+            // The indexer must not be writing rows of this source with the old mailbox meanwhile
+            RestartingIndexer(() =>
             {
                 AppServices.Workspace.SetSourceMailbox(row.Id, name);
                 row.OriginalMailbox = name;
-                Changed = true;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+            }, reload: false);
         }
 
         private List<Row> Selected() => SourcesGrid.SelectedItems.OfType<Row>().ToList();
@@ -104,7 +100,7 @@ namespace PstBrowser.App.Windows
             RestartingIndexer(() => { foreach (var r in rows) AppServices.Workspace.ResetSource(r.Id); });
         }
 
-        private void RestartingIndexer(Action action)
+        private void RestartingIndexer(Action action, bool reload = true)
         {
             try
             {
@@ -112,7 +108,7 @@ namespace PstBrowser.App.Windows
                 AppServices.Indexer?.StopAndWait().Wait();
                 action();
                 Changed = true;
-                Reload();
+                if (reload) Reload();
             }
             catch (Exception ex)
             {

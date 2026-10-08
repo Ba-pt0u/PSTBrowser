@@ -88,14 +88,8 @@ try {
     Search 'objet:"Outer mail"'
     SelectRow 0
     Shot '4-message-avec-message-joint'
-    $inner = $win.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition(
-        (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button)),
-        (Cond $AE::NameProperty '✉  Inner mail'))))
-    if ($null -eq $inner) {
-        # the button's name is its TextBlock content: search more loosely
-        $inner = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
-                 Where-Object { $_.Current.Name -like '*Inner mail*' } | Select-Object -First 1
-    }
+    $inner = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
+             Where-Object { $_.Current.Name -eq 'Inner mail' } | Select-Object -First 1
     if ($null -eq $inner) { throw "Bouton du message joint introuvable" }
     $inner.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep 5
@@ -108,7 +102,7 @@ try {
 
     # Sources window (modal)
     $btn = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
-           Where-Object { $_.Current.Name -eq 'Sources…' } | Select-Object -First 1
+           Where-Object { $_.Current.Name -like 'Sources*' } | Select-Object -First 1
     if ($null -ne $btn) {
         $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
         Start-Sleep 3
