@@ -121,7 +121,7 @@ namespace PstBrowser.App.Controls
             TxtLocation.ToolTip = v.SourcePath;
             BtnBack.Visibility = _history.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            AttachmentsList.Items.Clear();
+            AttachmentsList.Children.Clear();
             foreach (var a in v.Attachments)
             {
                 var btn = new Button
@@ -139,7 +139,7 @@ namespace PstBrowser.App.Controls
                 };
                 System.Windows.Automation.AutomationProperties.SetName(btn, a.FileName);
                 btn.Click += Attachment_Click;
-                AttachmentsList.Items.Add(btn);
+                AttachmentsList.Children.Add(btn);
             }
             AttachmentsBar.Visibility = v.Attachments.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }

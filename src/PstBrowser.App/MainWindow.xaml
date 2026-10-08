@@ -237,7 +237,7 @@
                         <Button Content="Ouvrir un dossier d'affaire…" Style="{StaticResource ToolButton}" Padding="16,8" Click="OpenCase_Click"/>
                     </StackPanel>
                     <TextBlock x:Name="RecentTitle" Text="Récents" FontWeight="SemiBold" Margin="0,6,0,4" Visibility="Collapsed"/>
-                    <ItemsControl x:Name="RecentList"/>
+                    <StackPanel x:Name="RecentList"/>
                 </StackPanel>
             </Grid>
         </Grid>

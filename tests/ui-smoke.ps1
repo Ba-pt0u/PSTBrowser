@@ -89,7 +89,7 @@ try {
     SelectRow 0
     Shot '4-message-avec-message-joint'
     $inner = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
-             Where-Object { $_.Current.Name -eq 'Inner mail' } | Select-Object -First 1
+             Where-Object { $_.Current.Name -like '*Inner mail*' } | Select-Object -First 1
     if ($null -eq $inner) { throw "Bouton du message joint introuvable" }
     $inner.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep 5

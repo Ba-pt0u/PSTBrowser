@@ -143,15 +143,15 @@ namespace PstBrowser.App
 
         private void FillRecent()
         {
-            RecentList.Items.Clear();
+            RecentList.Children.Clear();
             foreach (var p in _settings.RecentWorkspaces.Where(Directory.Exists).Take(6))
             {
                 var path = p;
                 var b = new Button { Content = path, Style = (Style)FindResource("LinkButton"), Margin = new Thickness(0, 2, 0, 2), HorizontalAlignment = HorizontalAlignment.Left };
                 b.Click += (_, __) => OpenWorkspace(path);
-                RecentList.Items.Add(b);
+                RecentList.Children.Add(b);
             }
-            RecentTitle.Visibility = RecentList.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            RecentTitle.Visibility = RecentList.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void OpenWorkspace(string folder)

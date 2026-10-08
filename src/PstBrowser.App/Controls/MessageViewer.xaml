@@ -57,13 +57,7 @@
                     <TextBlock x:Name="TxtLocation" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
                     <DockPanel x:Name="AttachmentsBar" Margin="0,8,0,0" Visibility="Collapsed">
                         <Button DockPanel.Dock="Right" Content="Tout enregistrer…" Style="{StaticResource LinkButton}" VerticalAlignment="Top" Margin="8,4,0,0" Click="SaveAll_Click"/>
-                        <ItemsControl x:Name="AttachmentsList">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                        </ItemsControl>
+                        <WrapPanel x:Name="AttachmentsList"/>
                     </DockPanel>
                 </StackPanel>
             </Border>
