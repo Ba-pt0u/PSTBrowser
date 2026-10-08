@@ -187,10 +187,10 @@ try {
     }
     catch { Log ("  AVERTISSEMENT (aperçu du texte) : " + $_.Exception.Message); try { Shot '5e-apercu-echec' } catch { } }
 
-    $r = Search 'clinometer'
-    Expect ($r -match 'élément') 'clinometer trouvé dans « Clinometer Usage.pdf »'
+    $r = Search '"BALANCING AGREEMENT"'
+    Expect ($r -match '— [1-9][0-9]* élément') '« BALANCING AGREEMENT » trouvé dans le document Word OBA_2760.doc'
     SelectRow 0
-    Shot '5f-pdf-clinometer'
+    Shot '5f-doc-balancing-agreement'
 
     # Column chooser: back to the "Standard" view
     try {
