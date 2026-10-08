@@ -15,7 +15,7 @@ namespace PstBrowser.Cli
     ///   selftest &lt;work-dir&gt; &lt;dir-with-pst-files&gt; &lt;dir-with-msg-files&gt;
     /// The PST directory is expected to contain enron.pst (from github.com/epfromer/pst-extractor).
     /// </summary>
-    internal static class SelfTest
+    internal static partial class SelfTest
     {
         private static int _failures;
 
@@ -92,6 +92,8 @@ namespace PstBrowser.Cli
                 var odd = S("a\"b (c* OR) NEAR/2 : ^x");
                 Check(odd.Error == null, "caractères spéciaux sans erreur");
 
+                SortTests(search);
+
                 Console.WriteLine("4. Lecture, rendu et exports");
                 using var msgSvc = new MessageService(ws);
                 var hit = S("tahoe").Rows.First();
@@ -119,6 +121,9 @@ namespace PstBrowser.Cli
                 Check(iv.InlineImages.Count == 1 && iv.BodyHtml.Contains("https://" + MessageService.VirtualHost + "/inline/"), "image intégrée servie localement");
                 var img = msgSvc.GetAttachmentBytes(new MessageRef(inlineMsg.Id), iv.InlineImages.Values.First());
                 Check(img != null && img.Length > 1000 && img[0] == 0xFF && img[1] == 0xD8, "octets de l'image intégrée (JPEG)");
+
+                RtfTests(search, msgSvc);
+                AttachmentSearchTests(ws, search, msgSvc);
 
                 var eml = Path.Combine(work, "outer.eml");
                 msgSvc.ExportEml(new MessageRef(outer.Id), eml);
@@ -149,13 +154,13 @@ namespace PstBrowser.Cli
                 ws.AddSources(new[] { many });
                 for (int round = 0; round < 3; round++)
                 {
-                    var ix = new Indexer(ws, new IndexerOptions { Parallelism = 2, BatchSize = 20 });
+                    var ix = new Indexer(ws, new IndexerOptions { Parallelism = 2, BatchSize = 20, IndexAttachments = false });
                     var t = ix.Start();
                     Thread.Sleep(150 + round * 100);
                     ix.Stop();
                     t.Wait();
                 }
-                new Indexer(ws).Start().Wait();
+                new Indexer(ws, new IndexerOptions { IndexAttachments = false }).Start().Wait();
                 var (total, indexed) = ws.GetCounts();
                 long fts, dup;
                 using (var db = ws.Open())
@@ -167,6 +172,10 @@ namespace PstBrowser.Cli
                 Check(fts == total, "index plein texte cohérent (ni doublon ni manque)");
                 Check(dup == 0, "aucun message en double");
             }
+
+            MigrationTests(work, src);
+            WorkerTests(work);
+            AttachmentResumeTests(work, src);
 
             Console.WriteLine(_failures == 0 ? "\nTOUS LES TESTS SONT PASSÉS" : $"\n{_failures} TEST(S) EN ÉCHEC");
             return _failures == 0 ? 0 : 3;
