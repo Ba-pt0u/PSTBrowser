@@ -1,4 +1,4 @@
-﻿// Project site: https://github.com/iluvadev/XstReader
+// Project site: https://github.com/iluvadev/XstReader
 //
 // Based on the great work of Dijji. 
 // Original project: https://github.com/dijji/XstReader
@@ -552,7 +552,7 @@ namespace XstReader
                     if (buffer == null)
                         buffer = new byte[rb.Length];
                     fs.Seek((long)rb.Offset, SeekOrigin.Begin);
-                    fs.Read(buffer, offset, rb.Length);
+                    fs.ReadExactly(buffer, offset, rb.Length); // PstBrowser modification: Read may return fewer bytes (network shares)
                     read = rb.Length;
                 }
             }

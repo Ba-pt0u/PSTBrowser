@@ -1,0 +1,73 @@
+name: UI smoke test
+
+# Lance l'application sur un runner Windows, la pilote (UI Automation) et publie des captures d'écran
+# sur la branche « ci-screenshots ». Uniquement avec des fichiers de test publics.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/ui-smoke.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ui-smoke
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  ui-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (MSVC)
+        shell: cmd
+        run: native\build-sqlite-windows.cmd
+
+      - name: Publier
+        run: |
+          dotnet publish src/PstBrowser.App/PstBrowser.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/app
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o out/cli
+
+      - name: Préparer un dossier d'affaire de test
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+          mkdir -p "$RUNNER_TEMP/src/msg"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/enron.pst" "$RUNNER_TEMP/src/michelle.lokay@enron.com.pst"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/enron.pst" "$RUNNER_TEMP/src/michelle.lokay@enron.com_1.pst"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/mtnman1965@outlook.com.ost" "$RUNNER_TEMP/src/"
+          cp "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles/"*.msg "$RUNNER_TEMP/src/msg/"
+          out/cli/pstbrowser-cli.exe add "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/src"
+          out/cli/pstbrowser-cli.exe index "$RUNNER_TEMP/affaire"
+
+      - name: Test de l'interface
+        shell: pwsh
+        run: ./tests/ui-smoke.ps1 -App out/app/PstBrowser.exe -Workspace "$env:RUNNER_TEMP\affaire" -OutDir "$env:RUNNER_TEMP\shots"
+
+      - name: Publier les captures sur la branche ci-screenshots
+        if: always()
+        shell: bash
+        run: |
+          [ -d "$RUNNER_TEMP/shots" ] || exit 0
+          cd "$RUNNER_TEMP/shots"
+          git init -q -b ci-screenshots
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          echo "Captures du test d'interface — commit ${GITHUB_SHA}" > README.md
+          git add -A
+          git commit -q -m "UI smoke test ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots

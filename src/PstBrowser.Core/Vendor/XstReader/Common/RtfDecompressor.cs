@@ -1,4 +1,4 @@
-﻿// Project site: https://github.com/iluvadev/XstReader
+// Project site: https://github.com/iluvadev/XstReader
 //
 // Based on the great work of Dijji. 
 // Original project: https://github.com/dijji/XstReader
@@ -80,8 +80,9 @@ namespace XstReader.Common
         {
             if (stream.CanRead)
             {
-                var buffer = new byte[stream.Length - 1];
-                stream.Read(buffer, 0, (int)stream.Length);
+                // PstBrowser modification: the original buffer was one byte too short and the read could be partial
+                var buffer = new byte[stream.Length];
+                stream.ReadExactly(buffer, 0, buffer.Length);
                 return Decompress(buffer, enforceCrc);
             }
             return null;

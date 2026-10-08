@@ -1,4 +1,4 @@
-﻿// Project site: https://github.com/iluvadev/XstReader
+// Project site: https://github.com/iluvadev/XstReader
 //
 // Based on the great work of Dijji. 
 // Original project: https://github.com/dijji/XstReader
@@ -22,7 +22,7 @@ namespace XstReader.Common
         public static T ReadType<T>(FileStream fs)
         {
             byte[] buffer = new byte[Marshal.SizeOf(typeof(T))];
-            fs.Read(buffer, 0, Marshal.SizeOf(typeof(T)));
+            fs.ReadExactly(buffer, 0, buffer.Length); // PstBrowser modification: Read may return fewer bytes (network shares)
             return MapType<T>(buffer);
         }
 
