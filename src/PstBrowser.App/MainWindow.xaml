@@ -1,0 +1,242 @@
+<Window x:Class="PstBrowser.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:PstBrowser.App.Controls"
+        xmlns:local="clr-namespace:PstBrowser.App"
+        Title="PST Browser" Height="860" Width="1500" MinWidth="900" MinHeight="500"
+        WindowStartupLocation="CenterScreen" Icon="/Resources/app.ico"
+        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver"
+        Closing="Window_Closing" FontFamily="Segoe UI" FontSize="13">
+    <Window.InputBindings>
+        <KeyBinding Key="F" Modifiers="Control" Command="{x:Static local:MainWindow.FocusSearchCommand}"/>
+        <KeyBinding Key="E" Modifiers="Control" Command="{x:Static local:MainWindow.FocusSearchCommand}"/>
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:MainWindow.FocusSearchCommand}" Executed="FocusSearch_Executed"/>
+    </Window.CommandBindings>
+
+    <DockPanel>
+        <!-- ===================== toolbar ===================== -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,7">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <Button Content="Exporter la liste (CSV)" Style="{StaticResource ToolButton}" Click="ExportCsv_Click" x:Name="BtnCsv" IsEnabled="False"
+                            ToolTip="Exporte tous les résultats de la recherche courante dans un fichier CSV (Excel)"/>
+                    <Button Content="Exporter la sélection (.eml)" Style="{StaticResource ToolButton}" Click="ExportEmlSelection_Click" x:Name="BtnEmlSel" IsEnabled="False"
+                            ToolTip="Enregistre les messages sélectionnés dans un dossier, au format .eml"/>
+                    <Button Content="?" Style="{StaticResource ToolButton}" Click="Help_Click" ToolTip="Aide" Margin="0" Width="30"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BtnCase" Style="{StaticResource ToolButton}" Click="BtnCase_Click" ToolTip="Créer, ouvrir ou changer de dossier d'affaire">
+                        <TextBlock>
+                            <Run Text="📁 "/><Run x:Name="RunCaseName" Text="Dossier d'affaire" FontWeight="SemiBold"/><Run Text="  ▾"/>
+                        </TextBlock>
+                    </Button>
+                    <Button Content="＋ Ajouter des fichiers PST / MSG" Style="{StaticResource ToolButton}" Click="AddFiles_Click" x:Name="BtnAddFiles" IsEnabled="False"/>
+                    <Button Content="＋ Ajouter un dossier" Style="{StaticResource ToolButton}" Click="AddFolder_Click" x:Name="BtnAddFolder" IsEnabled="False"
+                            ToolTip="Ajoute tous les fichiers PST/OST du dossier et de ses sous-dossiers, et les fichiers MSG qu'il contient"/>
+                    <Button Content="Sources…" Style="{StaticResource ToolButton}" Click="Sources_Click" x:Name="BtnSources" IsEnabled="False"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ===================== search bar ===================== -->
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,8" x:Name="SearchBar" IsEnabled="False">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="250"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid>
+                    <TextBox x:Name="TxtQuery" FontSize="14" Padding="6,5" VerticalContentAlignment="Center" KeyDown="TxtQuery_KeyDown"
+                             ToolTip="Mots (tous requis), &quot;expression exacte&quot;, mot*, a OR b, -exclu, de: à: objet: corps: pj: avant:2024-01-31 apres:2023-01-01"/>
+                    <TextBlock x:Name="QueryHint" Text="Rechercher dans tous les messages : mots, &quot;expression exacte&quot;, de:dupont, pj:contrat…"
+                               Foreground="#9AA0A6" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="14"/>
+                </Grid>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
+                    <ComboBox x:Name="CmbScope" Width="190" VerticalContentAlignment="Center" Margin="0,0,8,0" SelectedIndex="0"
+                              ToolTip="Où chercher">
+                        <ComboBoxItem Content="Partout (toutes les boîtes)"/>
+                        <ComboBoxItem Content="Boîte sélectionnée"/>
+                        <ComboBoxItem Content="Dossier sélectionné"/>
+                    </ComboBox>
+                    <TextBlock Text="du" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource MutedBrush}"/>
+                    <DatePicker x:Name="DateFrom" Width="118" VerticalContentAlignment="Center" SelectedDateFormat="Short"/>
+                    <TextBlock Text="au" VerticalAlignment="Center" Margin="6,0,4,0" Foreground="{StaticResource MutedBrush}"/>
+                    <DatePicker x:Name="DateTo" Width="118" VerticalContentAlignment="Center" SelectedDateFormat="Short" Margin="0,0,8,0"/>
+                    <CheckBox x:Name="ChkAtt" Content="Avec PJ" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <CheckBox x:Name="ChkDedup" Content="Sans doublons" VerticalAlignment="Center" Margin="0,0,10,0" IsChecked="True"
+                              ToolTip="Masque les copies d'un même message (même Message-ID) dans une même boîte, fréquentes dans les exports découpés"/>
+                    <Button Content="Rechercher" Style="{StaticResource AccentButton}" Click="Search_Click" Margin="0,0,6,0"/>
+                    <Button Content="Effacer" Style="{StaticResource ToolButton}" Click="ClearSearch_Click" Margin="0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===================== status bar ===================== -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,4">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" x:Name="IndexPanel" Visibility="Collapsed">
+                    <ProgressBar x:Name="IndexProgress" Width="220" Height="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <Button x:Name="BtnPause" Content="Pause" Style="{StaticResource LinkButton}" Click="Pause_Click" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock x:Name="TxtStatus" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{StaticResource MutedBrush}"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ===================== main area ===================== -->
+        <Grid>
+            <Grid x:Name="MainArea" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="ColTree" Width="270" MinWidth="150"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition x:Name="ColList" Width="*" MinWidth="300"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition x:Name="ColReader" Width="*" MinWidth="300"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- folder tree -->
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="10,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <CheckBox x:Name="ChkHideEmpty" DockPanel.Dock="Right" Content="Masquer vides" FontSize="11" VerticalAlignment="Center"
+                                      Click="HideEmpty_Click" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="Boîtes et dossiers" FontWeight="SemiBold"/>
+                        </DockPanel>
+                    </Border>
+                    <TreeView x:Name="Tree" BorderThickness="0" SelectedItemChanged="Tree_SelectedItemChanged" Padding="2,4">
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+                                <Setter Property="Padding" Value="2,2"/>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"/>
+                                    <TextBlock Text="{Binding Name}" FontWeight="{Binding Weight}"/>
+                                    <TextBlock Text="{Binding CountText}" Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource PanelBrush}" ResizeBehavior="PreviousAndNext"/>
+
+                <!-- message list -->
+                <DockPanel Grid.Column="2">
+                    <Border DockPanel.Dock="Top" Padding="10,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <ComboBox x:Name="CmbSort" DockPanel.Dock="Right" Width="150" SelectedIndex="0" SelectionChanged="CmbSort_SelectionChanged" Margin="10,0,0,0"
+                                      ToolTip="Ordre de tri (cliquer sur un en-tête de colonne fonctionne aussi)">
+                                <ComboBoxItem Content="Plus récents d'abord"/>
+                                <ComboBoxItem Content="Plus anciens d'abord"/>
+                                <ComboBoxItem Content="Pertinence"/>
+                                <ComboBoxItem Content="Expéditeur (A→Z)"/>
+                                <ComboBoxItem Content="Objet (A→Z)"/>
+                                <ComboBoxItem Content="Taille (décroissante)"/>
+                            </ComboBox>
+                            <Button x:Name="BtnMore" DockPanel.Dock="Right" Content="Afficher plus" Style="{StaticResource LinkButton}" Click="More_Click" Visibility="Collapsed" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtResults" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </Border>
+                    <DataGrid x:Name="MessageList" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
+                              HeadersVisibility="Column" GridLinesVisibility="None" BorderThickness="0" RowHeaderWidth="0"
+                              EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                              CanUserSortColumns="True" Sorting="List_Sorting" SelectionChanged="List_SelectionChanged"
+                              MouseDoubleClick="List_MouseDoubleClick" KeyDown="List_KeyDown"
+                              AlternatingRowBackground="#FAFBFC" Background="White">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="ToolTip" Value="{Binding TooltipText}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDuplicate}" Value="True">
+                                        <Setter Property="Foreground" Value="#8A8F96"/>
+                                        <Setter Property="FontStyle" Value="Italic"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Padding" Value="4,3"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="DataGridCell">
+                                            <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                                                <ContentPresenter VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#CFE2F7"/>
+                                        <Setter Property="Foreground" Value="Black"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.CellStyle>
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Ouvrir dans une nouvelle fenêtre" Click="OpenInWindow_Click"/>
+                                <MenuItem Header="Afficher le dossier du message" Click="ShowFolder_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Exporter la sélection (.eml)…" Click="ExportEmlSelection_Click"/>
+                                <MenuItem Header="Copier (date, expéditeur, objet)" Click="CopyRows_Click"/>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="📎" Binding="{Binding AttachmentMark}" Width="28" SortMemberPath="HasAttachments" CanUserSort="False"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='dd/MM/yyyy HH:mm'}" Width="118" SortMemberPath="Date"/>
+                            <DataGridTextColumn Header="De" Binding="{Binding From}" Width="170" SortMemberPath="From"/>
+                            <DataGridTemplateColumn Header="Objet" Width="*" SortMemberPath="Subject" MinWidth="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding SubjectText}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Snippet}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="#6B6F76"
+                                                       Visibility="{Binding SnippetVisibility}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Boîte" Binding="{Binding Mailbox}" Width="130" CanUserSort="False"/>
+                            <DataGridTextColumn Header="Dossier" Binding="{Binding FolderName}" Width="110" CanUserSort="False"/>
+                            <DataGridTextColumn Header="Taille" Binding="{Binding SizeText}" Width="70" SortMemberPath="Size"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource PanelBrush}" ResizeBehavior="PreviousAndNext"/>
+
+                <!-- reading pane -->
+                <c:MessageViewer x:Name="Viewer" Grid.Column="4"/>
+            </Grid>
+
+            <!-- ===================== welcome screen ===================== -->
+            <Grid x:Name="Welcome" Background="White">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="620">
+                    <TextBlock Text="PST Browser" FontSize="30" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                    <TextBlock Text="Consultation hors ligne de fichiers PST, OST et MSG (exports eDiscovery)" FontSize="15" Margin="0,4,0,22" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,18" LineHeight="20">
+                        Commencez par créer un <Bold>dossier d'affaire</Bold> : c'est un dossier (de préférence chiffré, par exemple sur un volume BitLocker)
+                        qui contiendra l'index de recherche. Ajoutez-y ensuite vos fichiers PST ou MSG : ils restent à leur emplacement,
+                        sont ouverts en lecture seule et ne sont jamais modifiés. Aucune donnée ne quitte ce poste.
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                        <Button Content="Nouveau dossier d'affaire…" Style="{StaticResource AccentButton}" Padding="16,8" Click="NewCase_Click" Margin="0,0,10,0"/>
+                        <Button Content="Ouvrir un dossier d'affaire…" Style="{StaticResource ToolButton}" Padding="16,8" Click="OpenCase_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="RecentTitle" Text="Récents" FontWeight="SemiBold" Margin="0,6,0,4" Visibility="Collapsed"/>
+                    <ItemsControl x:Name="RecentList"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

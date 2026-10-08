@@ -1,0 +1,168 @@
+// pstbrowser-cli: command-line access to the PstBrowser engine (indexing, search, export).
+// Useful for scripting, for very large batches, and for testing the engine without the Windows UI.
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using PstBrowser.Core.Data;
+using PstBrowser.Core.Index;
+using PstBrowser.Core.Search;
+using PstBrowser.Core.Text;
+using PstBrowser.Core.Viewer;
+
+namespace PstBrowser.Cli
+{
+    internal static class Program
+    {
+        private static int Main(string[] args)
+        {
+            Charsets.EnsureRegistered();
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            if (args.Length < 2) return Usage();
+            if (args[0] == "selftest" && args.Length >= 4) return SelfTest.Run(args[1], args[2], args[3]);
+            string cmd = args[0].ToLowerInvariant();
+            string wsDir = args[1];
+            try
+            {
+                switch (cmd)
+                {
+                    case "add":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            var added = ws.AddSources(args.Skip(2));
+                            foreach (var s in added) Console.WriteLine($"+ {s.DisplayName}  →  boîte « {s.MailboxName} »");
+                            Console.WriteLine($"{added.Count} source(s) ajoutée(s).");
+                            return 0;
+                        }
+                    case "index":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            var opt = new IndexerOptions();
+                            if (args.Contains("--sha256")) opt.ComputeSha256 = true;
+                            var pi = Array.IndexOf(args, "--parallel");
+                            if (pi > 0 && pi + 1 < args.Length) opt.Parallelism = int.Parse(args[pi + 1]);
+                            var ix = new Indexer(ws, opt);
+                            var sw = Stopwatch.StartNew();
+                            var t = ix.Start();
+                            using var cts = new CancellationTokenSource();
+                            Console.CancelKeyPress += (_, e) => { e.Cancel = true; ix.Stop(); };
+                            string last = "";
+                            while (!t.Wait(1000))
+                            {
+                                var p = ix.Progress;
+                                var line = $"{p.Phase} {p.CurrentSource}  {p.Done:N0}/{p.Total:N0}  {p.MessagesPerSecond:N0} msg/s  erreurs: {p.Errors}";
+                                if (line != last) Console.Error.WriteLine(line);
+                                last = line;
+                            }
+                            var f = ix.Progress;
+                            Console.WriteLine($"{f.Phase} — {sw.Elapsed:hh\\:mm\\:ss} — erreurs: {f.Errors}{(f.LastError != null ? " (dernière : " + f.LastError + ")" : "")}");
+                            var (total, indexed) = ws.GetCounts();
+                            Console.WriteLine($"{indexed:N0}/{total:N0} éléments indexés. Index : {Format.Size(new FileInfo(ws.DbPath).Length)}");
+                            return 0;
+                        }
+                    case "sources":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            foreach (var s in ws.ListSources())
+                                Console.WriteLine($"[{s.Id}] {s.MailboxName} | {s.DisplayName} | {Format.Size(s.Size)} | {s.Status} | {s.IndexedCount}/{s.MessageCount} {(s.Sha256 != null ? "| SHA256 " + s.Sha256 : "")} {s.Error}");
+                            return 0;
+                        }
+                    case "tree":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            foreach (var mb in ws.ListMailboxes())
+                            {
+                                Console.WriteLine($"# {mb.Name} ({mb.MessageCount})");
+                                void Print(FolderNode n, int d) { Console.WriteLine($"{new string(' ', d * 2)}{n.Name} ({n.Count})"); foreach (var c in n.Children) Print(c, d + 1); }
+                                foreach (var n in ws.GetFolderTree(mb.Id)) Print(n, 1);
+                            }
+                            return 0;
+                        }
+                    case "search":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            var svc = new SearchService(ws);
+                            var req = new SearchRequest { Query = args.Length > 2 ? args[2] : "", Limit = 50 };
+                            for (int i = 3; i < args.Length; i++)
+                            {
+                                if (args[i] == "--sort" && i + 1 < args.Length) req.Sort = Enum.Parse<SortOrder>(args[++i], true);
+                                else if (args[i] == "--dedup") req.HideDuplicates = true;
+                                else if (args[i] == "--att") req.OnlyWithAttachments = true;
+                                else if (args[i] == "--limit") req.Limit = int.Parse(args[++i]);
+                                else if (args[i] == "--csv") { var csv = args[++i]; req.Limit = int.MaxValue; var all = svc.Search(req); SearchService.ExportCsv(all.Rows, csv); Console.WriteLine($"{all.Rows.Count} lignes → {csv}"); return 0; }
+                            }
+                            var r = svc.Search(req);
+                            if (r.Error != null) { Console.WriteLine("ERREUR : " + r.Error); return 2; }
+                            Console.WriteLine($"{r.Total:N0} résultat(s) en {r.ElapsedMs} ms");
+                            foreach (var row in r.Rows)
+                            {
+                                Console.WriteLine($"[{row.Id}] {row.Date:yyyy-MM-dd HH:mm} | {row.From} | {row.Subject} | {row.Mailbox}/{row.FolderPath}{(row.HasAttachments ? " 📎" + row.AttachmentCount : "")}{(row.IsDuplicate ? " (doublon)" : "")}");
+                                if (!string.IsNullOrEmpty(row.Snippet)) Console.WriteLine("      " + row.Snippet);
+                            }
+                            return 0;
+                        }
+                    case "show":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ms = new MessageService(ws);
+                            var v = ms.GetView(MessageRef.Parse(args[2]), args.Length > 3 ? QueryParser.Parse(args[3]).HighlightTerms : null);
+                            Console.WriteLine($"Objet : {v.Subject}\nDe : {v.From}\nÀ : {v.To}\nCc : {v.Cc}\nDate : {v.Date}\nType : {v.Kind} ({v.MessageClass})\nBoîte : {v.Mailbox} / {v.FolderPath}\nFormat : {v.BodyFormat}");
+                            foreach (var a in v.Attachments) Console.WriteLine($"  PJ [{a.Index}] {a.FileName} {a.SizeText}{(a.IsEmbeddedMessage ? " (message)" : "")}");
+                            if (args.Contains("--html")) { var path = args[Array.IndexOf(args, "--html") + 1]; File.WriteAllText(path, v.BodyHtml); Console.WriteLine("HTML → " + path); }
+                            return 0;
+                        }
+                    case "save-att":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ms = new MessageService(ws);
+                            ms.SaveAttachment(MessageRef.Parse(args[2]), int.Parse(args[3]), args[4]);
+                            Console.WriteLine($"→ {args[4]} ({new FileInfo(args[4]).Length} octets)");
+                            return 0;
+                        }
+                    case "eml":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ms = new MessageService(ws);
+                            ms.ExportEml(MessageRef.Parse(args[2]), args[3]);
+                            Console.WriteLine($"→ {args[3]}");
+                            return 0;
+                        }
+                    case "remove":
+                        {
+                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            ws.RemoveSource(long.Parse(args[2]));
+                            Console.WriteLine("Source retirée de l'index (fichier non modifié).");
+                            return 0;
+                        }
+                    default:
+                        return Usage();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("ERREUR : " + ex.Message);
+                return 1;
+            }
+        }
+
+        private static int Usage()
+        {
+            Console.WriteLine(@"pstbrowser-cli — moteur PstBrowser en ligne de commande (SQLite " + SqliteDb.Version + @")
+
+  add      <dossier-affaire> <fichier.pst|fichier.msg|dossier>...   ajoute des sources
+  index    <dossier-affaire> [--parallel N] [--sha256]               indexe (reprend là où il s'était arrêté)
+  sources  <dossier-affaire>                                         liste les sources
+  tree     <dossier-affaire>                                         arborescence des boîtes
+  search   <dossier-affaire> ""requête"" [--sort DateDesc|DateAsc|Relevance] [--dedup] [--att] [--limit N] [--csv fichier.csv]
+  show     <dossier-affaire> <id[-pj-pj]> [""termes""] [--html fichier.html]
+  save-att <dossier-affaire> <id[-pj]> <index-pj> <fichier>
+  eml      <dossier-affaire> <id[-pj]> <fichier.eml>
+  remove   <dossier-affaire> <id-source>
+
+Syntaxe de recherche : mots (ET implicite), ""expression exacte"", mot*, a OR b, -exclu,
+  de: à: objet: corps: pj:   avant:AAAA-MM-JJ  apres:AAAA-MM-JJ");
+            return 1;
+        }
+    }
+}

@@ -1,0 +1,90 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  engine-tests-linux:
+    name: Tests du moteur (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite
+        run: native/build-sqlite-linux.sh
+
+      - name: Compiler le moteur et l'outil en ligne de commande
+        run: dotnet build src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release
+
+      - name: Récupérer les fichiers de test publics (PST/OST/MSG)
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+
+      - name: Tests de bout en bout
+        run: >
+          dotnet src/PstBrowser.Cli/bin/Release/net10.0/pstbrowser-cli.dll selftest
+          "$RUNNER_TEMP/selftest"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+  windows:
+    name: Application Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (MSVC)
+        shell: cmd
+        run: native\build-sqlite-windows.cmd
+
+      - name: Publier l'application (exécutable unique)
+        run: >
+          dotnet publish src/PstBrowser.App/PstBrowser.App.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -o out/app
+
+      - name: Publier l'outil en ligne de commande
+        run: >
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/cli
+
+      - name: Récupérer les fichiers de test publics
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+
+      - name: Tests de bout en bout (exécutable Windows)
+        shell: bash
+        run: >
+          out/cli/pstbrowser-cli.exe selftest
+          "$RUNNER_TEMP/selftest"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Mettre à disposition l'exécutable de test
+        uses: actions/upload-artifact@v4
+        with:
+          name: PstBrowser-win-x64
+          path: |
+            out/app/PstBrowser.exe
+            out/cli/pstbrowser-cli.exe
+          retention-days: 14

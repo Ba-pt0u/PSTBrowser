@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>pstbrowser-cli</AssemblyName>
+    <RootNamespace>PstBrowser.Cli</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>PST Browser</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PstBrowser.Core\PstBrowser.Core.csproj" />
+  </ItemGroup>
+  <!-- Native SQLite built from native/sqlite (see native/build-sqlite-*.{cmd,sh}) -->
+  <ItemGroup>
+    <None Include="..\..\native\bin\linux-x64\libe_sqlite3.so" Link="libe_sqlite3.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\native\bin\linux-x64\libe_sqlite3.so')" />
+    <None Include="..\..\native\bin\win-x64\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\native\bin\win-x64\e_sqlite3.dll')" />
+  </ItemGroup>
+</Project>

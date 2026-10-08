@@ -1,0 +1,80 @@
+<UserControl x:Class="PstBrowser.App.Controls.MessageViewer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             Background="White">
+    <UserControl.Resources>
+        <Style x:Key="HeaderLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Margin" Value="0,2,10,2"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+        </Style>
+        <Style x:Key="HeaderValue" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="MaxHeight" Value="80"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        </Style>
+    </UserControl.Resources>
+    <Grid>
+        <DockPanel x:Name="Body" Visibility="Collapsed">
+            <Border DockPanel.Dock="Top" Padding="14,10,14,8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                <StackPanel>
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Button x:Name="BtnBack" Content="← Retour" Style="{StaticResource ToolButton}" Click="Back_Click" Visibility="Collapsed" ToolTip="Revenir au message parent"/>
+                            <Button Content="En-têtes" Style="{StaticResource ToolButton}" Click="Headers_Click" ToolTip="Afficher les en-têtes Internet et les propriétés techniques"/>
+                            <Button Content="Exporter .eml" Style="{StaticResource ToolButton}" Click="ExportEml_Click" ToolTip="Enregistrer ce message au format .eml (lisible par tout logiciel de messagerie)"/>
+                            <Button x:Name="BtnPopOut" Content="Nouvelle fenêtre" Style="{StaticResource ToolButton}" Click="PopOut_Click" Margin="0"/>
+                        </StackPanel>
+                        <TextBlock x:Name="TxtSubject" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,10,6"/>
+                    </DockPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="De" Style="{StaticResource HeaderLabel}"/>
+                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="TxtFrom" Style="{StaticResource HeaderValue}" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="1" Text="À" Style="{StaticResource HeaderLabel}" x:Name="LblTo"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="TxtTo" Style="{StaticResource HeaderValue}"/>
+                        <TextBlock Grid.Row="2" Text="Cc" Style="{StaticResource HeaderLabel}" x:Name="LblCc"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtCc" Style="{StaticResource HeaderValue}"/>
+                        <TextBlock Grid.Row="3" Text="Cci" Style="{StaticResource HeaderLabel}" x:Name="LblBcc"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="TxtBcc" Style="{StaticResource HeaderValue}"/>
+                        <TextBlock Grid.Row="4" Text="Date" Style="{StaticResource HeaderLabel}"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtDate" Style="{StaticResource HeaderValue}"/>
+                    </Grid>
+                    <TextBlock x:Name="TxtLocation" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                    <DockPanel x:Name="AttachmentsBar" Margin="0,8,0,0" Visibility="Collapsed">
+                        <Button DockPanel.Dock="Right" Content="Tout enregistrer…" Style="{StaticResource LinkButton}" VerticalAlignment="Top" Margin="8,4,0,0" Click="SaveAll_Click"/>
+                        <ItemsControl x:Name="AttachmentsList">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+            <Grid>
+                <wv2:WebView2 x:Name="Web"/>
+                <TextBlock x:Name="TxtWebError" Visibility="Collapsed" TextWrapping="Wrap" Margin="20" Foreground="#A33"/>
+            </Grid>
+        </DockPanel>
+        <TextBlock x:Name="TxtPlaceholder" Text="Sélectionnez un message pour l'afficher" Foreground="{StaticResource MutedBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" Margin="20" TextAlignment="Center"/>
+    </Grid>
+</UserControl>

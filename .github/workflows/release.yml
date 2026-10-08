@@ -1,0 +1,98 @@
+name: Release
+
+# Publie une release GitHub quand un tag de version est poussé :
+#   git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    name: Release Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version
+        id: v
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Tag de version invalide : ${{ github.ref_name }} (attendu : v1.2.3)" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Compiler SQLite (MSVC)
+        shell: cmd
+        run: native\build-sqlite-windows.cmd
+
+      - name: Publier l'application
+        run: >
+          dotnet publish src/PstBrowser.App/PstBrowser.App.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:Version=${{ steps.v.outputs.version }} -o out/app
+
+      - name: Publier l'outil en ligne de commande
+        run: >
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -p:Version=${{ steps.v.outputs.version }} -o out/cli
+
+      - name: Récupérer les fichiers de test publics
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+
+      - name: Tests de bout en bout avant publication
+        shell: bash
+        run: >
+          out/cli/pstbrowser-cli.exe selftest
+          "$RUNNER_TEMP/selftest"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Préparer les fichiers et les empreintes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item out/app/PstBrowser.exe dist/PstBrowser.exe
+          Copy-Item out/cli/pstbrowser-cli.exe dist/pstbrowser-cli.exe
+          $lines = Get-ChildItem dist -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
+          $lines | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          $notes = @"
+          ## PST Browser ${{ steps.v.outputs.version }}
+
+          Visualiseur **hors ligne** de fichiers PST, OST et MSG (exports eDiscovery Microsoft Purview).
+
+          - ``PstBrowser.exe`` : l'application (exécutable unique, aucune installation, aucun droit administrateur).
+          - ``pstbrowser-cli.exe`` : le même moteur en ligne de commande (indexation de gros volumes, scripts).
+
+          Prérequis : Windows 10 ou 11 x64 (le composant Microsoft Edge WebView2, fourni avec Windows, est utilisé pour afficher les messages).
+
+          Empreintes SHA-256 :
+          ``````
+          $($lines -join "`n")
+          ``````
+          Vérification : ``Get-FileHash .\PstBrowser.exe -Algorithm SHA256``
+
+          Compilé par GitHub Actions à partir du commit ${{ github.sha }}.
+          "@
+          $notes -replace '(?m)^          ', '' | Set-Content -Encoding utf8 release-notes.md
+
+      - name: Créer la release GitHub
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}" dist/PstBrowser.exe dist/pstbrowser-cli.exe dist/SHA256SUMS.txt
+          --title "PST Browser ${{ steps.v.outputs.version }}" --notes-file release-notes.md
