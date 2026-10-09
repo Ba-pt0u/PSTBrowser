@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PstBrowser.Core.Analysis;
 using PstBrowser.Core.Data;
 using PstBrowser.Core.Extraction;
 using PstBrowser.Core.Mail;
@@ -134,7 +135,11 @@ namespace PstBrowser.Core.Index
             {
                 var sources = _ws.ListSources().Where(s => s.Status != "done").ToList();
                 bool attachments = _opt.IndexAttachments && _ws.AttachmentIndexingEnabled;
-                if (sources.Count == 0 && !(attachments && _ws.HasPendingAttachments())) { SetPhase("Index à jour"); return; }
+                bool attachmentsPending = attachments && _ws.HasPendingAttachments();
+                bool headersPending = _ws.HasPendingHeaderAnalysis();
+                if (sources.Count == 0 && !attachmentsPending && !headersPending && !_ws.DerivedDirty) { SetPhase("Index à jour"); return; }
+                // anything new in the index makes the case-wide analysis (threads, look-alike domains, sensitive data) out of date
+                if (sources.Count > 0 || attachmentsPending || headersPending) _ws.DerivedDirty = true;
 
                 if (sources.Count > 0)
                 {
@@ -169,6 +174,17 @@ namespace PstBrowser.Core.Index
                 if (attachments)
                 {
                     await AttachmentPass(ct);
+                    if (ct.IsCancellationRequested) { SetPhase("Indexation suspendue"); return; }
+                }
+
+                // ---- headers and dates of messages indexed by an earlier version
+                await HeaderPass(ct);
+                if (ct.IsCancellationRequested) { SetPhase("Indexation suspendue"); return; }
+
+                // ---- case-wide analysis: threads, look-alike domains, sensitive data
+                if (_ws.DerivedDirty)
+                {
+                    await Task.Run(() => DerivedPass(ct), ct);
                     if (ct.IsCancellationRequested) { SetPhase("Indexation suspendue"); return; }
                 }
 
@@ -268,6 +284,7 @@ namespace PstBrowser.Core.Index
                 try
                 {
                     // a folder interrupted half-way is listed again from scratch
+                    db.Exec("DELETE FROM sensitive WHERE message_id IN (SELECT id FROM messages WHERE folder_id=?)", folderId);
                     db.Exec("DELETE FROM att_fts WHERE rowid IN (SELECT a.id FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.folder_id=?)", folderId);
                     db.Exec("DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE folder_id=?)", folderId);
                     db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE folder_id=?)", folderId);
@@ -301,7 +318,8 @@ namespace PstBrowser.Core.Index
             public long Id;
             public string Subject, SenderName, SenderEmail, To, Cc, Bcc, MessageId, Class, AttNames, Topic;
             public string FtsSender, FtsRecipients, Body, Error;
-            public long? Date, Sent; public long Size; public bool HasAtt, IsRead; public int AttCount, Importance, Flag;
+            public long? Date, Sent, Created, Modified; public long Size; public bool HasAtt, IsRead; public int AttCount, Importance, Flag;
+            public string InReplyTo, Refs, ConvKey, ReplyTo, ReturnPath, Spf, Dkim, Dmarc; public int Spoof, DateFlags;
         }
 
         private void IndexPstContent(SourceInfo s, CancellationToken ct)
@@ -376,6 +394,8 @@ namespace PstBrowser.Core.Index
             var sent = m.SentDate;
             e.Sent = sent.HasValue ? SqliteStmt.ToUnixMs(sent.Value) : (long?)null;
             e.Topic = m.ConversationTopic;
+            e.InReplyTo = m.InReplyTo;
+            FillAnalysis(e, m);
             e.IsRead = m.IsRead;
             e.Flag = m.FlagStatus;
             var recips = m.Recipients;
@@ -442,7 +462,9 @@ namespace PstBrowser.Core.Index
                 var upd = db.Prepare(@"UPDATE messages SET subject=COALESCE(?,subject), sender_name=COALESCE(?,sender_name), sender_email=?, to_text=COALESCE(?,to_text),
                                        cc_text=COALESCE(?,cc_text), date=COALESCE(?,date), size=CASE WHEN ?>0 THEN ? ELSE size END, has_att=?, att_count=?, att_names=?,
                                        msg_class=COALESCE(?,msg_class), importance=?, message_id=?, indexed=1, error=?,
-                                       bcc_text=?, sent_date=?, conversation_topic=?, is_read=?, flag_status=? WHERE id=?");
+                                       bcc_text=?, sent_date=?, conversation_topic=?, is_read=?, flag_status=?,
+                                       in_reply_to=?, refs=?, conv_key=?, created_date=?, modified_date=?, reply_to=?, return_path=?,
+                                       auth_spf=?, auth_dkim=?, auth_dmarc=?, spoof_flags=(spoof_flags & 40) | ?, date_flags=?, hdr_done=1 WHERE id=?");
                 var del = db.Prepare("DELETE FROM fts WHERE rowid=?");
                 var ins = db.Prepare("INSERT INTO fts(rowid,subject,sender,recipients,body,attachments) VALUES(?,?,?,?,?,?)");
                 foreach (var e in batch)
@@ -454,7 +476,8 @@ namespace PstBrowser.Core.Index
                     }
                     upd.Reset().BindAll(e.Subject, e.SenderName, e.SenderEmail, NullIfEmpty(e.To), NullIfEmpty(e.Cc), e.Date, e.Size, e.Size, e.HasAtt, e.AttCount,
                         NullIfEmpty(e.AttNames), e.Class, e.Importance, e.MessageId, null,
-                        NullIfEmpty(e.Bcc), e.Sent, e.Topic, e.IsRead, e.Flag, e.Id);
+                        NullIfEmpty(e.Bcc), e.Sent, e.Topic, e.IsRead, e.Flag,
+                        e.InReplyTo, e.Refs, e.ConvKey, e.Created, e.Modified, e.ReplyTo, e.ReturnPath, e.Spf, e.Dkim, e.Dmarc, e.Spoof, e.DateFlags, e.Id);
                     upd.Run();
                     del.Reset().Bind(1, e.Id).Run();
                     ins.Reset().BindAll(e.Id, e.Subject, e.FtsSender, e.FtsRecipients, e.Body, e.AttNames);
@@ -527,14 +550,16 @@ namespace PstBrowser.Core.Index
                 try
                 {
                     var ins = db.Prepare(@"INSERT INTO messages(source_id,folder_id,mailbox_id,file_path,subject,sender_name,sender_email,to_text,cc_text,date,size,has_att,att_count,att_names,msg_class,importance,message_id,indexed,error,
-                                                              bcc_text,sent_date,conversation_topic,is_read,flag_status)
-                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)");
+                                                              bcc_text,sent_date,conversation_topic,is_read,flag_status,
+                                                              in_reply_to,refs,conv_key,created_date,modified_date,reply_to,return_path,auth_spf,auth_dkim,auth_dmarc,spoof_flags,date_flags,hdr_done)
+                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)");
                     var fts = db.Prepare("INSERT INTO fts(rowid,subject,sender,recipients,body,attachments) VALUES(?,?,?,?,?,?)");
                     foreach (var (e, folderId, file) in batch)
                     {
                         ins.Reset().BindAll(s.Id, folderId, s.MailboxId, file, e.Subject ?? (e.Error != null ? Path.GetFileName(file) : null), e.SenderName, e.SenderEmail,
                             NullIfEmpty(e.To), NullIfEmpty(e.Cc), e.Date, e.Size, e.HasAtt, e.AttCount, NullIfEmpty(e.AttNames), e.Class, e.Importance, e.MessageId, e.Error,
-                            NullIfEmpty(e.Bcc), e.Sent, e.Topic, e.IsRead, e.Flag);
+                            NullIfEmpty(e.Bcc), e.Sent, e.Topic, e.IsRead, e.Flag,
+                            e.InReplyTo, e.Refs, e.ConvKey, e.Created, e.Modified, e.ReplyTo, e.ReturnPath, e.Spf, e.Dkim, e.Dmarc, e.Spoof, e.DateFlags);
                         ins.Run();
                         long id = db.LastInsertRowId;
                         if (e.Error == null)

@@ -53,7 +53,7 @@ namespace PstBrowser.Core.Index
     public sealed class Workspace : IDisposable
     {
         public const string DbFileName = "pstbrowser-index.db";
-        public const int SchemaVersion = 2;
+        public const int SchemaVersion = 3;
 
         public string Folder { get; }
         public string DbPath => System.IO.Path.Combine(Folder, DbFileName);
@@ -163,7 +163,25 @@ CREATE TABLE IF NOT EXISTS messages(
   conversation_topic TEXT,
   is_read INTEGER,
   flag_status INTEGER,
-  att_indexed INTEGER NOT NULL DEFAULT 0);
+  att_indexed INTEGER NOT NULL DEFAULT 0,
+  in_reply_to TEXT,
+  refs TEXT,
+  conv_key TEXT,
+  created_date INTEGER,
+  modified_date INTEGER,
+  reply_to TEXT,
+  return_path TEXT,
+  auth_spf TEXT,
+  auth_dkim TEXT,
+  auth_dmarc TEXT,
+  spoof_flags INTEGER NOT NULL DEFAULT 0,
+  date_flags INTEGER NOT NULL DEFAULT 0,
+  thread_id INTEGER,
+  thread_count INTEGER,
+  sens_flags INTEGER NOT NULL DEFAULT 0,
+  sens_count INTEGER NOT NULL DEFAULT 0,
+  sens_state INTEGER NOT NULL DEFAULT 0,
+  hdr_done INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS messages_folder_date ON messages(folder_id, date);
 CREATE INDEX IF NOT EXISTS messages_mailbox_date ON messages(mailbox_id, date);
 CREATE INDEX IF NOT EXISTS messages_date ON messages(date);
@@ -174,6 +192,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, b
                 if (v == null)
                 {
                     CreateV2Objects();
+                    CreateV3Objects();
                     _db.Exec("INSERT INTO meta(key,value) VALUES('schema',?)", SchemaVersion.ToString());
                     _db.Exec("INSERT INTO meta(key,value) VALUES('created',?)", DateTime.UtcNow.ToString("o"));
                 }
@@ -183,6 +202,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, b
                     if (version > SchemaVersion)
                         throw new InvalidOperationException("Cet index a été créé par une version plus récente de PstBrowser.");
                     if (version < 2) MigrateToV2();
+                    if (version < 3) MigrateToV3();
                 }
             }
         }
@@ -206,6 +226,59 @@ CREATE INDEX IF NOT EXISTS attachments_message ON attachments(message_id);
 CREATE INDEX IF NOT EXISTS attachments_sha ON attachments(sha256);
 CREATE INDEX IF NOT EXISTS messages_att_pending ON messages(source_id, att_indexed);
 CREATE VIRTUAL TABLE IF NOT EXISTS att_fts USING fts5(name, content, tokenize='unicode61 remove_diacritics 2')");
+        }
+
+        /// <summary>Objects introduced by schema 3: investigation data (headers, dates, threads, sensitive data).</summary>
+        private void CreateV3Objects()
+        {
+            _db.Exec(@"
+CREATE TABLE IF NOT EXISTS sensitive(
+  id INTEGER PRIMARY KEY,
+  message_id INTEGER NOT NULL,
+  att_path TEXT,
+  kind INTEGER NOT NULL,
+  masked TEXT,
+  pos INTEGER NOT NULL,
+  len INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS sensitive_message ON sensitive(message_id);
+CREATE TABLE IF NOT EXISTS lookalikes(
+  domain TEXT PRIMARY KEY,
+  resembles TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  messages INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id)");
+        }
+
+        private static readonly (string name, string type)[] V3MessageColumns =
+        {
+            ("in_reply_to", "TEXT"), ("refs", "TEXT"), ("conv_key", "TEXT"), ("created_date", "INTEGER"), ("modified_date", "INTEGER"),
+            ("reply_to", "TEXT"), ("return_path", "TEXT"), ("auth_spf", "TEXT"), ("auth_dkim", "TEXT"), ("auth_dmarc", "TEXT"),
+            ("spoof_flags", "INTEGER NOT NULL DEFAULT 0"), ("date_flags", "INTEGER NOT NULL DEFAULT 0"), ("thread_id", "INTEGER"), ("thread_count", "INTEGER"),
+            ("sens_flags", "INTEGER NOT NULL DEFAULT 0"), ("sens_count", "INTEGER NOT NULL DEFAULT 0"), ("sens_state", "INTEGER NOT NULL DEFAULT 0"),
+            ("hdr_done", "INTEGER NOT NULL DEFAULT 0"),
+        };
+
+        /// <summary>
+        /// Schema 2 → 3: adds the investigation columns and tables. Nothing is read again from the sources here: the indexer then
+        /// analyses the headers of the messages already indexed (<c>hdr_done=0</c>) and runs the case-wide analysis (<c>derived_dirty</c>).
+        /// </summary>
+        private void MigrateToV3()
+        {
+            _db.Begin();
+            try
+            {
+                var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var st = _db.Prepare("PRAGMA table_info(messages)");
+                while (st.Step()) existing.Add(st.GetString(1));
+                st.Reset();
+                foreach (var (name, type) in V3MessageColumns)
+                    if (!existing.Contains(name)) _db.Exec($"ALTER TABLE messages ADD COLUMN {name} {type}");
+                CreateV3Objects();
+                _db.Exec("INSERT INTO meta(key,value) VALUES('derived_dirty','1') ON CONFLICT(key) DO UPDATE SET value='1'");
+                _db.Exec("INSERT INTO meta(key,value) VALUES('schema','3') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+                _db.Commit();
+            }
+            catch { _db.Rollback(); throw; }
         }
 
         private static readonly (string name, string type)[] V2MessageColumns =
@@ -432,6 +505,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS att_fts USING fts5(name, content, tokenize='u
         /// <summary>Deletes messages, full-text rows, attachment rows and folders of a source (inside the caller's transaction).</summary>
         internal static void DeleteSourceContent(SqliteDb db, long sourceId)
         {
+            db.Exec("DELETE FROM sensitive WHERE message_id IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
             db.Exec("DELETE FROM att_fts WHERE rowid IN (SELECT a.id FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.source_id=?)", sourceId);
             db.Exec("DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
             db.Exec("DELETE FROM fts WHERE rowid IN (SELECT id FROM messages WHERE source_id=?)", sourceId);
@@ -528,8 +602,21 @@ CREATE VIRTUAL TABLE IF NOT EXISTS att_fts USING fts5(name, content, tokenize='u
             lock (DbLock) return _db.ExecScalarLong("SELECT EXISTS(SELECT 1 FROM messages WHERE indexed=1 AND has_att=1 AND att_indexed=0)") > 0;
         }
 
-        /// <summary>Indexing work remains (structure, contents, or attachment contents when enabled).</summary>
-        public bool HasPendingWork() => HasPendingSources() || (AttachmentIndexingEnabled && HasPendingAttachments());
+        /// <summary>Messages indexed before schema 3 whose headers and dates have not been analysed yet.</summary>
+        public bool HasPendingHeaderAnalysis()
+        {
+            lock (DbLock) return _db.ExecScalarLong("SELECT EXISTS(SELECT 1 FROM messages WHERE indexed=1 AND hdr_done=0)") > 0;
+        }
+
+        /// <summary>The case-wide analysis (threads, look-alike domains, sensitive data) has to run or finish.</summary>
+        public bool DerivedDirty
+        {
+            get => GetMeta("derived_dirty") == "1";
+            set => SetMeta("derived_dirty", value ? "1" : "0");
+        }
+
+        /// <summary>Indexing work remains (structure, contents, attachment contents when enabled, header and case-wide analysis).</summary>
+        public bool HasPendingWork() => HasPendingSources() || (AttachmentIndexingEnabled && HasPendingAttachments()) || HasPendingHeaderAnalysis() || DerivedDirty;
 
         /// <summary>Re-extracts the attachments of every message (e.g. after enabling the option or upgrading the extractors).</summary>
         public void ResetAttachments()
@@ -541,7 +628,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS att_fts USING fts5(name, content, tokenize='u
                 {
                     _db.Exec("DELETE FROM att_fts");
                     _db.Exec("DELETE FROM attachments");
-                    _db.Exec("UPDATE messages SET att_indexed=0");
+                    _db.Exec("DELETE FROM sensitive WHERE att_path IS NOT NULL");
+                    _db.Exec("UPDATE messages SET att_indexed=0, sens_state=0");
+                    _db.Exec("INSERT INTO meta(key,value) VALUES('derived_dirty','1') ON CONFLICT(key) DO UPDATE SET value='1'");
                     _db.Commit();
                 }
                 catch { _db.Rollback(); throw; }

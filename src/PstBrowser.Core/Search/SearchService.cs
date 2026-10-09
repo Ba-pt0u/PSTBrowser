@@ -41,6 +41,11 @@ namespace PstBrowser.Core.Search
             ["conversation"] = ("m.conversation_topic COLLATE NOCASE", false),
             ["read"] = ("m.is_read", false),
             ["flag"] = ("m.flag_status", true),
+            ["thread"] = ("m.thread_count", true),
+            ["spoof"] = ("m.spoof_flags", true),
+            ["dateflags"] = ("m.date_flags", true),
+            ["sensitive"] = ("m.sens_count", true),
+            ["spf"] = ("m.auth_spf", false),
         };
 
         public static IEnumerable<string> Keys => Map.Keys.Concat(new[] { Relevance });
@@ -131,6 +136,22 @@ namespace PstBrowser.Core.Search
         public bool? IsRead { get; set; }
         /// <summary>0 none, 1 complete, 2 flagged.</summary>
         public int FlagStatus { get; set; }
+        /// <summary>Headers and dates have been analysed (messages indexed by an earlier version are analysed after the update).</summary>
+        public bool Analysed { get; set; }
+        public long? ThreadId { get; set; }
+        public int ThreadCount { get; set; }
+        public string Spf { get; set; }
+        public string Dkim { get; set; }
+        public string Dmarc { get; set; }
+        public string ReplyTo { get; set; }
+        public string ReturnPath { get; set; }
+        /// <summary><see cref="Analysis.SpoofFlags"/></summary>
+        public int SpoofFlags { get; set; }
+        /// <summary><see cref="Analysis.DateFlags"/></summary>
+        public int DateFlags { get; set; }
+        /// <summary><see cref="Analysis.SensitiveKind"/> bits</summary>
+        public int SensitiveFlags { get; set; }
+        public int SensitiveCount { get; set; }
 
         public string From => string.IsNullOrEmpty(SenderName) ? SenderEmail : SenderName;
         public string Kind => ItemKind(MessageClass);
@@ -187,7 +208,8 @@ namespace PstBrowser.Core.Search
             var pq = QueryParser.Parse(req.Query);
             res.HighlightTerms = pq.HighlightTerms;
             bool fts = !pq.IsEmpty;
-            if (!fts && !string.IsNullOrWhiteSpace(req.Query) && pq.After == null && pq.Before == null)
+            if (pq.Errors.Count > 0) { res.Error = string.Join(" ", pq.Errors); return res; }
+            if (!fts && !string.IsNullOrWhiteSpace(req.Query) && pq.After == null && pq.Before == null && pq.Filters.Count == 0)
             {
                 res.Error = "Requête vide ou uniquement négative : ajoutez au moins un mot à rechercher.";
                 return res;
@@ -200,6 +222,30 @@ namespace PstBrowser.Core.Search
                 where.Add(FamilyCondition(clause, "IN", args));
             foreach (var clause in pq.Negative)
                 where.Add(FamilyCondition(clause, "NOT IN", args));
+            foreach (var f in pq.Filters)
+            {
+                string not = f.Negated ? "NOT " : "";
+                switch (f.Field)
+                {
+                    case "indice":
+                        {
+                            var (column, mask) = QueryFilter.Indices[f.Value];
+                            where.Add(f.Negated ? $"(m.{column} & {mask}) = 0" : $"(m.{column} & {mask}) <> 0");
+                            break;
+                        }
+                    case "fil":
+                        where.Add($"{(f.Negated ? "(m.thread_id IS NULL OR m.thread_id<>?)" : "m.thread_id=?")}");
+                        args.Add(long.Parse(f.Value));
+                        break;
+                    default: // spf, dkim, dmarc
+                        {
+                            string col = "m.auth_" + f.Field;
+                            if (f.Value == "absent") where.Add(f.Negated ? $"{col} IS NOT NULL" : $"{col} IS NULL");
+                            else { where.Add(f.Negated ? $"({col} IS NULL OR {col}<>?)" : $"{col}=?"); args.Add(f.Value); }
+                            break;
+                        }
+                }
+            }
             if (req.MailboxId.HasValue)
             {
                 if (!string.IsNullOrEmpty(req.FolderPath))
@@ -249,7 +295,9 @@ namespace PstBrowser.Core.Search
             }
             string sql = $@"SELECT m.id, m.subject, m.sender_name, m.sender_email, m.to_text, m.date, m.size, m.has_att, m.att_count, m.att_names,
                                    b.name, f.path, m.msg_class, m.importance, m.dup_of, m.indexed, m.error, s.display_name, m.mailbox_id,
-                                   m.cc_text, m.bcc_text, m.sent_date, m.conversation_topic, m.is_read, m.flag_status, m.message_id, s.path
+                                   m.cc_text, m.bcc_text, m.sent_date, m.conversation_topic, m.is_read, m.flag_status, m.message_id, s.path,
+                                   m.hdr_done, m.thread_id, m.thread_count, m.auth_spf, m.auth_dkim, m.auth_dmarc, m.reply_to, m.return_path,
+                                   m.spoof_flags, m.date_flags, m.sens_flags, m.sens_count
                             FROM messages m
                             JOIN folders f ON f.id=m.folder_id
                             JOIN sources s ON s.id=m.source_id
@@ -307,6 +355,12 @@ namespace PstBrowser.Core.Search
                                 FlagStatus = st.GetInt(24),
                                 MessageId = st.GetString(25),
                                 SourcePath = st.GetString(26),
+                                Analysed = st.GetInt(27) != 0,
+                                ThreadId = st.GetLongOrNull(28),
+                                ThreadCount = st.GetInt(29),
+                                Spf = st.GetString(30), Dkim = st.GetString(31), Dmarc = st.GetString(32),
+                                ReplyTo = st.GetString(33), ReturnPath = st.GetString(34),
+                                SpoofFlags = st.GetInt(35), DateFlags = st.GetInt(36), SensitiveFlags = st.GetInt(37), SensitiveCount = st.GetInt(38),
                             });
                         }
                     }
@@ -419,7 +473,7 @@ namespace PstBrowser.Core.Search
         {
             int count = 0;
             using var w = new StreamWriter(path, false, new UTF8Encoding(true));
-            w.WriteLine("Date;Expéditeur;Adresse expéditeur;Destinataires;Objet;Boîte;Dossier;Type;Taille (octets);Pièces jointes;Noms des pièces jointes;Doublon;Id interne;Date d'envoi;Cc;Cci;Message-ID;Conversation;Lu;Suivi;Importance;Fichier source");
+            w.WriteLine("Date;Expéditeur;Adresse expéditeur;Destinataires;Objet;Boîte;Dossier;Type;Taille (octets);Pièces jointes;Noms des pièces jointes;Doublon;Id interne;Date d'envoi;Cc;Cci;Message-ID;Conversation;Lu;Suivi;Importance;Fichier source;SPF;DKIM;DMARC;Reply-To;Return-Path;Indices d'usurpation;Anomalies de dates;Données sensibles;Fil;Messages du fil");
             foreach (var r in rows)
             {
                 w.WriteLine(string.Join(";", new[]
@@ -431,10 +485,39 @@ namespace PstBrowser.Core.Search
                     r.SentDate?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "", Csv(r.Cc), Csv(r.Bcc), Csv(r.MessageId), Csv(r.ConversationTopic),
                     r.IsRead == true ? "lu" : r.IsRead == false ? "non lu" : "", r.FlagStatus == 2 ? "à suivre" : r.FlagStatus == 1 ? "terminé" : "",
                     r.Importance == 2 ? "haute" : r.Importance == 0 ? "basse" : "normale", Csv(r.SourceName),
+                    r.Spf ?? "", r.Dkim ?? "", r.Dmarc ?? "", Csv(r.ReplyTo), Csv(r.ReturnPath), Csv(SpoofLabels(r.SpoofFlags)), Csv(DateLabels(r.DateFlags)),
+                    Csv(Analysis.SensitiveScanner.Labels(r.SensitiveFlags)), r.ThreadId?.ToString(CultureInfo.InvariantCulture) ?? "", r.ThreadCount > 1 ? r.ThreadCount.ToString(CultureInfo.InvariantCulture) : "",
                 }));
                 count++;
             }
             return count;
+        }
+
+        /// <summary>"Reply-To différent, Authentification en échec" for the bits of <see cref="MessageRow.SpoofFlags"/>.</summary>
+        public static string SpoofLabels(int flags)
+        {
+            var parts = new List<string>();
+            if ((flags & 1) != 0) parts.Add("Reply-To différent");
+            if ((flags & 2) != 0) parts.Add("Return-Path différent");
+            if ((flags & 4) != 0) parts.Add("Nom affiché trompeur");
+            if ((flags & 32) != 0) parts.Add("Nom d'un correspondant habituel");
+            if ((flags & 8) != 0) parts.Add("Domaine ressemblant");
+            if ((flags & 16) != 0) parts.Add("Authentification en échec");
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>Labels of the bits of <see cref="MessageRow.DateFlags"/>.</summary>
+        public static string DateLabels(int flags)
+        {
+            var parts = new List<string>();
+            if ((flags & 1) != 0) parts.Add("Reçu avant envoi");
+            if ((flags & 2) != 0) parts.Add("Modifié avant création");
+            if ((flags & 64) != 0) parts.Add("Modifié avant réception");
+            if ((flags & 4) != 0) parts.Add("En-tête Date décalé");
+            if ((flags & 8) != 0) parts.Add("Serveurs à rebours");
+            if ((flags & 16) != 0) parts.Add("Date future");
+            if ((flags & 32) != 0) parts.Add("Date avant 1995");
+            return string.Join(", ", parts);
         }
 
         private static string Csv(string s)

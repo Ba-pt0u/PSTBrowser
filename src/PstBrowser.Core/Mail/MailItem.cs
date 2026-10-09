@@ -56,6 +56,14 @@ namespace PstBrowser.Core.Mail
         /// <summary>PidTagConversationTopic (normalised subject shared by the messages of a conversation).</summary>
         string ConversationTopic { get; }
         bool IsRead { get; }
+        /// <summary>PidTagMessageDeliveryTime only (no fallback, unlike <see cref="Date"/>).</summary>
+        DateTime? DeliveryDate { get; }
+        DateTime? CreatedDate { get; }
+        DateTime? ModifiedDate { get; }
+        /// <summary>PidTagInternetReferences: the Message-IDs of the earlier messages of the thread.</summary>
+        string InternetReferences { get; }
+        /// <summary>First 22 bytes (hex) of the Outlook conversation index, identical for all the messages of a conversation.</summary>
+        string ConversationKey { get; }
         /// <summary>PidTagFlagStatus: 0 none, 1 complete, 2 flagged.</summary>
         int FlagStatus { get; }
         string TransportHeaders { get; }

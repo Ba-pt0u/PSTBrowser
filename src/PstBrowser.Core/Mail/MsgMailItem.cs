@@ -151,6 +151,11 @@ namespace PstBrowser.Core.Mail
         public string ConversationTopic => S(PstMailItem.TagConversationTopic);
         public bool IsRead => _p.Int(PstMailItem.TagFlags) is int f && (f & 0x1) != 0;
         public int FlagStatus => _p.Int(PstMailItem.TagFlagStatus) ?? 0;
+        public DateTime? DeliveryDate => _p.Time(PstMailItem.TagDelivery);
+        public DateTime? CreatedDate => _p.Time(PstMailItem.TagCreation);
+        public DateTime? ModifiedDate => _p.Time(PstMailItem.TagModification);
+        public string InternetReferences => S(PstMailItem.TagReferences);
+        public string ConversationKey => _p.Binary(PstMailItem.TagConversationIndex, 4096) is byte[] b && b.Length >= 22 ? Convert.ToHexString(b, 0, 22) : null;
 
         public IReadOnlyList<RecipientInfo> Recipients
         {

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using PstBrowser.Core.Analysis;
 using PstBrowser.Core.Data;
 using PstBrowser.Core.Index;
 using PstBrowser.Core.Mail;
@@ -86,6 +87,50 @@ namespace PstBrowser.Core.Viewer
         public string BodyFormat { get; set; }
         /// <summary>Inline images referenced by the body: url token → attachment index.</summary>
         public Dictionary<string, int> InlineImages { get; set; } = new Dictionary<string, int>();
+        /// <summary>Thread of the message (null when the case-wide analysis has not run yet) and its size.</summary>
+        public long? ThreadId { get; set; }
+        public int ThreadCount { get; set; }
+        /// <summary><see cref="Analysis.SpoofFlags"/>, <see cref="Analysis.DateFlags"/> and <see cref="Analysis.SensitiveKind"/> bits stored for the message.</summary>
+        public int SpoofFlags { get; set; }
+        public int DateFlags { get; set; }
+        public int SensitiveFlags { get; set; }
+        public int SensitiveCount { get; set; }
+        /// <summary>"Reply-To différent, …" / "IBAN, Téléphone": the alerts shown above the body.</summary>
+        public string AlertText
+        {
+            get
+            {
+                var parts = new List<string>();
+                var spoof = Search.SearchService.SpoofLabels(SpoofFlags);
+                if (spoof.Length > 0) parts.Add("Indices d'usurpation : " + spoof);
+                var dates = Search.SearchService.DateLabels(DateFlags);
+                if (dates.Length > 0) parts.Add("Dates incohérentes : " + dates);
+                if (SensitiveFlags != 0) parts.Add("Données sensibles : " + SensitiveScanner.Labels(SensitiveFlags));
+                return string.Join("   ·   ", parts);
+            }
+        }
+    }
+
+    /// <summary>One sensitive value found in a message or an attachment (the index keeps only the masked form).</summary>
+    public sealed class SensitiveItem
+    {
+        public long Id { get; set; }
+        public SensitiveKind Kind { get; set; }
+        public string KindLabel => SensitiveScanner.Label(Kind);
+        public string Masked { get; set; }
+        /// <summary>"Corps du message" or "Pièce jointe : name".</summary>
+        public string Location { get; set; }
+    }
+
+    /// <summary>Everything the "Analyse" window shows about one message.</summary>
+    public sealed class AnalysisView
+    {
+        public MessageAnalysis Live { get; set; }
+        /// <summary>Case-wide indications (look-alike domain, display name of a regular correspondent), in addition to <c>Live.Header.Findings</c>.</summary>
+        public List<Finding> CaseFindings { get; } = new List<Finding>();
+        public List<SensitiveItem> Sensitive { get; } = new List<SensitiveItem>();
+        public long? ThreadId { get; set; }
+        public int ThreadCount { get; set; }
     }
 
     public static class Format
@@ -212,10 +257,123 @@ namespace PstBrowser.Core.Viewer
                                     .Select(a => new AttachmentView { Index = a.Index, FileName = a.FileName, Size = a.Size, IsEmbeddedMessage = a.IsEmbeddedMessage, IsInline = a.IsInline })
                                     .ToList();
                 MarkIndexedAttachments(v, mref, query, highlightTerms);
+                LoadStoredAnalysis(v, mref.Id);
                 v.BodyHtml = BodyRenderer.Render(m, mref, highlightTerms, v.InlineImages, out var fmt);
                 v.BodyFormat = fmt;
                 return v;
             });
+        }
+
+        private void LoadStoredAnalysis(MessageView v, long messageId)
+        {
+            try
+            {
+                lock (_ws.DbLock)
+                {
+                    var st = _ws.Db.Prepare("SELECT thread_id, thread_count, spoof_flags, date_flags, sens_flags, sens_count FROM messages WHERE id=?");
+                    st.Bind(1, messageId);
+                    try
+                    {
+                        if (!st.Step()) return;
+                        v.ThreadId = st.GetLongOrNull(0); v.ThreadCount = st.GetInt(1);
+                        v.SpoofFlags = st.GetInt(2); v.DateFlags = st.GetInt(3); v.SensitiveFlags = st.GetInt(4); v.SensitiveCount = st.GetInt(5);
+                    }
+                    finally { st.Reset(); }
+                }
+            }
+            catch (Exception) { /* index without analysis columns */ }
+        }
+
+        /// <summary>Headers, dates, case-wide indications and sensitive data of a message, for the "Analyse" window.</summary>
+        public AnalysisView GetAnalysis(MessageRef mref)
+        {
+            var av = new AnalysisView();
+            string senderName = null, senderEmail = null;
+            av.Live = With(mref, (m, _) => { senderName = m.SenderName; senderEmail = m.SenderEmail; return MessageAnalyzer.Analyze(m); });
+            lock (_ws.DbLock)
+            {
+                var db = _ws.Db;
+                var st = db.Prepare("SELECT thread_id, thread_count, spoof_flags FROM messages WHERE id=?");
+                st.Bind(1, mref.Id);
+                int flags = 0;
+                try { if (st.Step()) { av.ThreadId = st.GetLongOrNull(0); av.ThreadCount = st.GetInt(1); flags = st.GetInt(2); } } finally { st.Reset(); }
+
+                if ((flags & (int)SpoofFlags.LookAlikeDomain) != 0 && senderEmail != null)
+                {
+                    var org = DomainUtil.Organisational(MailHeaders.DomainOf(senderEmail));
+                    st = db.Prepare("SELECT resembles, kind, messages FROM lookalikes WHERE domain=?");
+                    st.Bind(1, org);
+                    try
+                    {
+                        if (st.Step())
+                        {
+                            string how = st.GetString(1) switch
+                            {
+                                "homoglyph" => "caractères d'apparence identique (par exemple « rn » pour « m », « 0 » pour « o »)",
+                                "typo" => "une lettre de différence",
+                                "suffix" => "même nom avec une autre extension",
+                                "punycode" => "nom international (punycode) imitant un autre",
+                                _ => "ressemblance",
+                            };
+                            av.CaseFindings.Add(new Finding { Code = "look-alike", Text = $"Le domaine de l'expéditeur ({org}, {st.GetLong(2)} message(s) dans le dossier d'affaire) ressemble au domaine bien plus fréquent {st.GetString(0)} : {how}." });
+                        }
+                    }
+                    finally { st.Reset(); }
+                }
+                if ((flags & (int)SpoofFlags.NameImpersonation) != 0 && !string.IsNullOrEmpty(senderName))
+                {
+                    st = db.Prepare("SELECT lower(sender_email), COUNT(*) FROM messages WHERE lower(sender_name)=? GROUP BY 1 ORDER BY 2 DESC LIMIT 1");
+                    st.Bind(1, senderName.ToLowerInvariant());
+                    try
+                    {
+                        if (st.Step())
+                            av.CaseFindings.Add(new Finding { Code = "name-reuse", Text = $"Le nom « {senderName} » est utilisé ici avec l'adresse {senderEmail}, alors que dans le reste du dossier d'affaire il est associé à {st.GetString(0)} ({st.GetLong(1)} message(s)), d'un autre organisme." });
+                    }
+                    finally { st.Reset(); }
+                }
+
+                st = db.Prepare("SELECT id, kind, masked, att_path FROM sensitive WHERE message_id=? ORDER BY att_path IS NOT NULL, att_path, pos");
+                st.Bind(1, mref.Id);
+                var rows = new List<(long id, int kind, string masked, string path)>();
+                try { while (st.Step()) rows.Add((st.GetLong(0), st.GetInt(1), st.GetString(2), st.GetString(3))); } finally { st.Reset(); }
+                var names = new Dictionary<string, string>();
+                var ast = db.Prepare("SELECT idx_path, name FROM attachments WHERE message_id=?");
+                ast.Bind(1, mref.Id);
+                try { while (ast.Step()) names[ast.GetString(0) ?? ""] = ast.GetString(1); } finally { ast.Reset(); }
+                foreach (var r in rows)
+                    av.Sensitive.Add(new SensitiveItem
+                    {
+                        Id = r.id, Kind = (SensitiveKind)r.kind, Masked = r.masked,
+                        Location = r.path == null ? "Corps du message" : "Pièce jointe : " + (names.TryGetValue(r.path, out var n) ? n : r.path),
+                    });
+            }
+            return av;
+        }
+
+        /// <summary>The complete value behind a masked detection, read back from the indexed text (null when it is no longer there).</summary>
+        public string RevealSensitive(long sensitiveId)
+        {
+            lock (_ws.DbLock)
+            {
+                var db = _ws.Db;
+                var st = db.Prepare("SELECT message_id, att_path, pos, len FROM sensitive WHERE id=?");
+                st.Bind(1, sensitiveId);
+                long messageId; string path; int pos, len;
+                try
+                {
+                    if (!st.Step()) return null;
+                    messageId = st.GetLong(0); path = st.GetString(1); pos = st.GetInt(2); len = st.GetInt(3);
+                }
+                finally { st.Reset(); }
+                string text;
+                if (path == null) text = db.ExecScalarString("SELECT body FROM fts WHERE rowid=?", messageId);
+                else
+                {
+                    long attId = db.ExecScalarLong("SELECT id FROM attachments WHERE message_id=? AND idx_path=?", messageId, path);
+                    text = attId == 0 ? null : db.ExecScalarString("SELECT content FROM att_fts WHERE rowid=?", attId);
+                }
+                return text != null && pos >= 0 && pos + len <= text.Length ? text.Substring(pos, len) : null;
+            }
         }
 
         /// <summary>Adds the extraction status, hash and search hits of pass 3 to the attachments of a view.</summary>

@@ -95,8 +95,33 @@ namespace PstBrowser.Core.Search
     ///   avant:/before:AAAA-MM-JJ   apres:/after:AAAA-MM-JJ    → date filters
     /// Each positive clause must be found in the message OR in one of its attachments (family search).
     /// </summary>
+    /// <summary>A condition on the analysis of a message rather than on its text: <c>indice:</c>, <c>spf:</c>, <c>dkim:</c>, <c>dmarc:</c>, <c>fil:</c>.</summary>
+    public sealed class QueryFilter
+    {
+        /// <summary>indice, spf, dkim, dmarc or fil.</summary>
+        public string Field { get; set; }
+        public string Value { get; set; }
+        public bool Negated { get; set; }
+
+        /// <summary>Values of <c>indice:</c> and the bits they test (spoof_flags, date_flags, sens_flags).</summary>
+        internal static readonly Dictionary<string, (string column, int mask)> Indices = new Dictionary<string, (string, int)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["usurpation"] = ("spoof_flags", 63), ["replyto"] = ("spoof_flags", 1), ["returnpath"] = ("spoof_flags", 2), ["nomtrompeur"] = ("spoof_flags", 4 | 32),
+            ["domaine"] = ("spoof_flags", 8), ["auth"] = ("spoof_flags", 16),
+            ["dates"] = ("date_flags", 127),
+            ["sensible"] = ("sens_flags", 15), ["iban"] = ("sens_flags", 1), ["carte"] = ("sens_flags", 2), ["secu"] = ("sens_flags", 4), ["tel"] = ("sens_flags", 8),
+        };
+
+        internal static readonly HashSet<string> AuthValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "pass", "fail", "softfail", "neutral", "none", "temperror", "permerror", "absent" };
+    }
+
     public sealed class ParsedQuery
     {
+        /// <summary>Conditions on the analysis of messages (indices, authentication, thread).</summary>
+        public List<QueryFilter> Filters { get; } = new List<QueryFilter>();
+        /// <summary>Problems found in the query (unknown value of a filter…).</summary>
+        public List<string> Errors { get; } = new List<string>();
         /// <summary>Clauses that must all be satisfied.</summary>
         public List<QueryClause> Positive { get; } = new List<QueryClause>();
         /// <summary>Exclusions; each one removes the messages (and families) it matches.</summary>
@@ -122,9 +147,11 @@ namespace PstBrowser.Core.Search
             ["contenupj"] = QueryField.AttachmentText,
         };
 
+        private static readonly HashSet<string> FilterFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "indice", "spf", "dkim", "dmarc", "fil" };
+
         private sealed class Tok
         {
-            public QueryField Field; public string Text; public bool Phrase; public bool Prefix; public bool Negated; public bool IsOr;
+            public string Filter; public QueryField Field; public string Text; public bool Phrase; public bool Prefix; public bool Negated; public bool IsOr;
         }
 
         public static ParsedQuery Parse(string input)
@@ -137,6 +164,7 @@ namespace PstBrowser.Core.Search
             foreach (var t in toks)
             {
                 if (t.IsOr) { pendingOr = result.Positive.Count > 0; continue; }
+                if (t.Filter != null) { AddFilter(result, t); continue; }
                 var term = ToTerm(t);
                 if (term == null) continue;
                 if (t.Negated)
@@ -162,6 +190,27 @@ namespace PstBrowser.Core.Search
                     result.HighlightTerms.Add(w + (term.Prefix ? "*" : ""));
             }
             return result;
+        }
+
+        private static void AddFilter(ParsedQuery q, Tok t)
+        {
+            var f = new QueryFilter { Field = t.Filter.ToLowerInvariant(), Value = t.Text.Trim().ToLowerInvariant(), Negated = t.Negated };
+            switch (f.Field)
+            {
+                case "indice":
+                    if (!QueryFilter.Indices.ContainsKey(f.Value))
+                    { q.Errors.Add($"Indice inconnu « {t.Text} » (valeurs : {string.Join(", ", QueryFilter.Indices.Keys)})."); return; }
+                    break;
+                case "fil":
+                    if (!long.TryParse(f.Value, out _)) { q.Errors.Add($"fil: attend le numéro d'un fil (« {t.Text} » n'est pas un nombre)."); return; }
+                    break;
+                default: // spf, dkim, dmarc
+                    if (f.Value == "echec" || f.Value == "échec") f.Value = "fail";
+                    if (!QueryFilter.AuthValues.Contains(f.Value))
+                    { q.Errors.Add($"Résultat « {t.Text} » inconnu pour {f.Field}: (valeurs : {string.Join(", ", QueryFilter.AuthValues)})."); return; }
+                    break;
+            }
+            q.Filters.Add(f);
         }
 
         private static QueryTerm ToTerm(Tok t)
@@ -203,6 +252,14 @@ namespace PstBrowser.Core.Search
                             i = k;
                             continue;
                         }
+                    }
+                    else if (FilterFields.Contains(name))
+                    {
+                        int k = colon + 1;
+                        while (k < s.Length && !char.IsWhiteSpace(s[k])) k++;
+                        list.Add(new Tok { Filter = name, Text = s.Substring(colon + 1, k - colon - 1), Negated = t.Negated });
+                        i = k;
+                        continue;
                     }
                     else if (Fields.TryGetValue(name, out var field))
                     {

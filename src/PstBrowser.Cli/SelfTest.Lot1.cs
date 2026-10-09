@@ -163,14 +163,14 @@ namespace PstBrowser.Cli
 
         // ------------------------------------------------------------------ extractor, worker, statuses
 
-        /// <summary>Minimal compound file (version 3) holding the given streams at its root; each stream is padded to 4096 bytes.</summary>
+        /// <summary>Minimal compound file (version 3) holding the given streams at its root; each stream is padded to 4096 bytes. One FAT sector: 64 KB at most.</summary>
         private static byte[] BuildCfb(params (string name, byte[] data)[] streams)
         {
             const int sector = 512;
             var datas = streams.Select(s => s.data.Length >= 4096 ? s.data : s.data.Concat(new byte[4096 - s.data.Length]).ToArray()).ToList();
-            if (streams.Length > 3) throw new ArgumentException("3 streams at most");
+            int dirSectors = (streams.Length + 1 + 3) / 4;
             var sectorsPer = datas.Select(d => (d.Length + sector - 1) / sector).ToList();
-            int total = 2 + sectorsPer.Sum();
+            int total = 1 + dirSectors + sectorsPer.Sum();
             if (total > 128) throw new ArgumentException("too large for one FAT sector");
             var file = new byte[sector * (1 + total)];
             void U16(int o, int v) => BitConverter.GetBytes((ushort)v).CopyTo(file, o);
@@ -186,12 +186,13 @@ namespace PstBrowser.Cli
             for (int i = 1; i < 109; i++) U32(0x4C + 4 * i, 0xFFFFFFFF);
             var fatEntries = new uint[128];
             for (int i = 0; i < 128; i++) fatEntries[i] = 0xFFFFFFFF;
-            fatEntries[0] = 0xFFFFFFFD; fatEntries[1] = 0xFFFFFFFE;
-            int next = 2; var starts = new List<int>();
+            fatEntries[0] = 0xFFFFFFFD;
+            for (int d = 0; d < dirSectors; d++) fatEntries[1 + d] = d == dirSectors - 1 ? 0xFFFFFFFE : (uint)(2 + d);
+            int next = 1 + dirSectors; var starts = new List<int>();
             for (int s = 0; s < datas.Count; s++)
             {
                 starts.Add(next);
-                for (int k = 0; k < sectorsPer[s]; k++) { fatEntries[next + k] = k == sectorsPer[s] - 1 ? 0xFFFFFFFE : (uint)(next + k + 1); }
+                for (int k = 0; k < sectorsPer[s]; k++) fatEntries[next + k] = k == sectorsPer[s] - 1 ? 0xFFFFFFFE : (uint)(next + k + 1);
                 Array.Copy(datas[s], 0, file, sector * (1 + next), datas[s].Length);
                 next += sectorsPer[s];
             }
@@ -230,7 +231,7 @@ namespace PstBrowser.Cli
 
         private static void WorkerTests(string work)
         {
-            Console.WriteLine("8. Extraction : formats, statuts chiffré / vide, processus séparé");
+            Console.WriteLine("9. Extraction : formats, statuts chiffré / vide, processus séparé");
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             // encrypted documents
@@ -371,7 +372,7 @@ namespace PstBrowser.Cli
             }
             using (var ws = Workspace.OpenOrCreate(folder))
             {
-                Check(ws.GetMeta("schema") == "2", "version du schéma passée à 2");
+                Check(ws.GetMeta("schema") == "3", "version du schéma mise à jour (1 → 2 → 3 en une ouverture)");
                 var cols = new HashSet<string>();
                 using (var db = ws.Open())
                 {
@@ -413,7 +414,7 @@ namespace PstBrowser.Cli
 
         private static void AttachmentResumeTests(string work, string src)
         {
-            Console.WriteLine("9. Passe 3 : taille maximale, interruption et reprise");
+            Console.WriteLine("10. Passe 3 : taille maximale, interruption et reprise");
             var many = Path.Combine(work, "pj-many");
             Directory.CreateDirectory(many);
             for (int i = 0; i < 30; i++) File.Copy(Path.Combine(src, "michelle.lokay@enron.com.pst"), Path.Combine(many, $"copie{i:00}.pst"));

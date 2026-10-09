@@ -124,6 +124,7 @@ namespace PstBrowser.Cli
 
                 RtfTests(search, msgSvc);
                 AttachmentSearchTests(ws, search, msgSvc);
+                AnalysisSampleTests(ws, search, msgSvc, work);
 
                 var eml = Path.Combine(work, "outer.eml");
                 msgSvc.ExportEml(new MessageRef(outer.Id), eml);
@@ -174,8 +175,10 @@ namespace PstBrowser.Cli
             }
 
             MigrationTests(work, src);
+            MigrationV3Tests(work);
             WorkerTests(work);
             AttachmentResumeTests(work, src);
+            SyntheticCaseTests(work);
 
             Console.WriteLine(_failures == 0 ? "\nTOUS LES TESTS SONT PASSÉS" : $"\n{_failures} TEST(S) EN ÉCHEC");
             return _failures == 0 ? 0 : 3;
