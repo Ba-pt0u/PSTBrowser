@@ -13,7 +13,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Product>PST Browser</Product>
     <Description>Visualiseur hors ligne de fichiers PST, OST et MSG (exports eDiscovery)</Description>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <StartupObject>PstBrowser.App.Program</StartupObject>
     <SatelliteResourceLanguages>fr</SatelliteResourceLanguages>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
