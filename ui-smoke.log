@@ -1,0 +1,72 @@
+  ok : worker : en-tête de réponse valide
+  ok : worker : statut « texte extrait »
+  ok : worker : texte restitué (Texte lu par le worker de l application)
+  ok : worker : arrêt propre à la fermeture de stdin
+Fenêtre : affaire — PST Browser
+capture : 1-demarrage.png (1024x768)
+Recherche « tahoe » : « tahoe » dans toutes les boîtes — 1 élément(s), doublons masqués  ·  10 ms
+  ok : résultats pour tahoe
+  en-têtes visibles : 📎 | Reçu le | Envoyé le | De | Adresse expéditeur | À | Cc | Cci | Objet | Boîte | Chemin du dossier | Fichier source | Nb PJ | Pièces jointes | Doublon | Message-ID | Fil | SPF / DKIM / DMARC | Usurpation ? | Dates | Sensible | Lu | Taille
+  ok : vue Investigation appliquée depuis settings.json (colonnes Reçu le / Envoyé le)
+  lignes visibles : 1
+  objet affiché : TRIP INFO
+capture : 2-recherche-tahoe.png (1024x768)
+Recherche « objet:"This is the subject" » : « objet:"This is the subject" » dans toutes les boîtes — 1 élément(s), doublons masqués  ·  2 ms
+  lignes visibles : 1
+  objet affiché : This is the subject
+capture : 3-image-integree.png (1024x768)
+Recherche « objet:"Outer mail" » : « objet:"Outer mail" » dans toutes les boîtes — 1 élément(s), doublons masqués  ·  0 ms
+  lignes visibles : 1
+  objet affiché : Outer mail
+capture : 4-message-avec-message-joint.png (1024x768)
+  message joint affiché : Inner mail
+capture : 4b-message-joint-ouvert.png (1024x768)
+Recherche « objet:HtmlSampleEmail prince » : « objet:HtmlSampleEmail prince » dans toutes les boîtes — 1 élément(s), doublons masqués  ·  1 ms
+  lignes visibles : 1
+  objet affiché : HtmlSampleEmail
+capture : 5-html-encapsule-rtf.png (1024x768)
+Recherche « objet:RtfSampleEmail » : « objet:RtfSampleEmail » dans toutes les boîtes — 1 élément(s), doublons masqués  ·  1 ms
+  lignes visibles : 1
+  objet affiché : RtfSampleEmail
+capture : 5b-rtf-mis-en-forme.png (1024x768)
+Recherche « pjtexte:proaliance » : « pjtexte:proaliance » dans toutes les boîtes — 1 élément(s), doublons masqués  ·  1 ms
+  ok : pjtexte:proaliance : 1 message (tahoe.xls)
+  lignes visibles : 1
+  objet affiché : TRIP INFO
+capture : 5c-pjtexte.png (1024x768)
+  ok : la pièce jointe qui contient les termes est signalée dans le lecteur
+capture : 5d-apercu-texte-piece-jointe.png (1024x768)
+Recherche « "BALANCING AGREEMENT" » : « "BALANCING AGREEMENT" » dans toutes les boîtes — 2 élément(s), doublons masqués  ·  4 ms
+  ok : « BALANCING AGREEMENT » trouvé dans le document Word OBA_2760.doc
+  lignes visibles : 2
+  objet affiché : word attachment
+capture : 5f-doc-balancing-agreement.png (1024x768)
+Recherche « indice:returnpath » : « indice:returnpath » dans toutes les boîtes — 8 élément(s), doublons masqués  ·  1 ms
+  ok : indice:returnpath : messages dont le Return-Path est d'un autre domaine
+  lignes visibles : 8
+  objet affiché : Power Mart '01 - Register online for your FREE exhibition pass!
+  ok : bandeau d'alerte affiché dans le lecteur
+capture : 5i-indice-return-path.png (1024x768)
+  ok : bouton « Analyse » du lecteur
+  ok : fenêtre « Analyse du message » ouverte
+  lignes dans la fenêtre d'analyse : 9
+  ok : chemin des serveurs affiché (au moins 4 sauts)
+capture : 5j-analyse-en-tetes.png (1024x768)
+Recherche « indice:tel » : « indice:tel » dans toutes les boîtes — 2 élément(s), doublons masqués  ·  0 ms
+  ok : indice:tel : données sensibles détectées (téléphone)
+Recherche « objet:"Thanksgiving Day" » : « objet:"Thanksgiving Day" » dans toutes les boîtes — 21 élément(s), doublons masqués  ·  4 ms
+  ok : messages « Thanksgiving Day »
+  lignes visibles : 8
+  objet affiché : Thanksgiving Day
+  ok : bouton « Fil (n) » du lecteur
+  ok : le fil s'affiche par la recherche « fil:146 »
+capture : 5k-fil-de-conversation.png (1024x768)
+capture : 5g-colonnes.png (1024x768)
+  en-têtes visibles : 📎 | Reçu le | De | Objet | Boîte | Dossier | Taille
+  ok : vue Standard : la colonne « Envoyé le » est masquée
+capture : 5h-vue-standard.png (1024x768)
+capture : 6-sources.png (1024x768)
+  ok : case « Indexer le contenu des pièces jointes » présente dans la fenêtre Sources
+  ok : la case est cochée par défaut
+SUCCÈS
+settings.json : ColumnPreset = Standard, 28 colonnes enregistrées
