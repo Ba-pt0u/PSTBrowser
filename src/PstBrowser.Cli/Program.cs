@@ -125,6 +125,7 @@ namespace PstBrowser.Cli
                                 Console.WriteLine($"  PJ [{a.Index}] {a.FileName} {a.SizeText}{(a.IsEmbeddedMessage ? " (message)" : "")}" +
                                                   (a.TextStatus != null ? $" — texte : {PstBrowser.Core.Extraction.AttachmentStatus.Label(a.TextStatus)}" + (a.HasText ? $" ({a.TextLength:N0} car.)" : "") : "") +
                                                   (a.HasHit ? " — CONTIENT LES TERMES RECHERCHÉS" : "") + (a.Sha256 != null ? " — SHA-256 " + a.Sha256 : ""));
+                            if (args.Contains("--headers")) Console.WriteLine("--- en-têtes Internet ---\n" + (v.TransportHeaders ?? "(aucun)").Replace("\r", "\\r"));
                             if (args.Contains("--att-text"))
                             {
                                 var at = ms.GetAttachmentText(MessageRef.Parse(args[2]).Id, args[Array.IndexOf(args, "--att-text") + 1]);
@@ -170,6 +171,7 @@ namespace PstBrowser.Cli
                             Console.WriteLine($"Chemin ({h.Hops.Count} serveur(s), du plus ancien au plus récent) :");
                             foreach (var hop in h.Hops)
                                 Console.WriteLine($"  {hop.Index}. {hop.From} [{hop.FromIp}] → {hop.By}  {hop.Time?.ToLocalTime():yyyy-MM-dd HH:mm:ss}  {(hop.Delay.HasValue ? "+" + hop.Delay.Value.TotalSeconds.ToString("0") + " s" : "")}");
+                            if (args.Contains("--raw")) foreach (var rawHop in h.Hops) Console.WriteLine($"  Received {rawHop.Index} : {rawHop.Raw}");
                             foreach (var f in h.Findings.Concat(a.CaseFindings)) Console.WriteLine("  ! " + f.Text);
                             Console.WriteLine("Dates :");
                             foreach (var d in a.Live.Dates.Dates.Where(d => d.Value.HasValue)) Console.WriteLine($"  {d.Label} : {d.Value.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
