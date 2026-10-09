@@ -27,6 +27,10 @@
                     <WrapPanel Margin="0,0,0,8">
                         <Button x:Name="BtnBack" Content="← Message parent" Style="{StaticResource ToolButton}" Click="Back_Click" Visibility="Collapsed" ToolTip="Revenir au message qui contient ce message joint"/>
                         <Button Content="En-têtes" Style="{StaticResource ToolButton}" Click="Headers_Click" ToolTip="Afficher les en-têtes Internet et les propriétés techniques"/>
+                        <Button x:Name="BtnAnalysis" Content="Analyse" Style="{StaticResource ToolButton}" Click="Analysis_Click"
+                                ToolTip="Chemin des serveurs, SPF / DKIM / DMARC, indices d'usurpation, dates, données sensibles, fil de conversation"/>
+                        <Button x:Name="BtnThread" Content="Fil" Style="{StaticResource ToolButton}" Click="Thread_Click" Visibility="Collapsed"
+                                ToolTip="Afficher tous les messages de ce fil de conversation"/>
                         <Button Content="Exporter .eml" Style="{StaticResource ToolButton}" Click="ExportEml_Click" ToolTip="Enregistrer ce message au format .eml (lisible par tout logiciel de messagerie)"/>
                         <Button x:Name="BtnPopOut" Content="Nouvelle fenêtre" Style="{StaticResource ToolButton}" Click="PopOut_Click"/>
                     </WrapPanel>
@@ -55,6 +59,12 @@
                         <TextBox Grid.Row="4" Grid.Column="1" x:Name="TxtDate" Style="{StaticResource HeaderValue}"/>
                     </Grid>
                     <TextBlock x:Name="TxtLocation" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                    <Border x:Name="AlertBar" Visibility="Collapsed" Background="#FFF4CE" BorderBrush="#E0B100" BorderThickness="1" CornerRadius="3" Padding="8,4" Margin="0,6,0,0">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Détails…" Style="{StaticResource LinkButton}" Click="Analysis_Click" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtAlert" TextWrapping="Wrap" FontSize="12" AutomationProperties.Name="Alertes d'analyse"/>
+                        </DockPanel>
+                    </Border>
                     <DockPanel x:Name="AttachmentsBar" Margin="0,8,0,0" Visibility="Collapsed">
                         <Button DockPanel.Dock="Right" Content="Tout enregistrer…" Style="{StaticResource LinkButton}" VerticalAlignment="Top" Margin="8,4,0,0" Click="SaveAll_Click"/>
                         <WrapPanel x:Name="AttachmentsList"/>

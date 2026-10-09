@@ -133,6 +133,19 @@ namespace PstBrowser.App
         public string ReadText => Row.IsRead == true ? "Lu" : Row.IsRead == false ? "Non lu" : "";
         public string FlagText => Row.FlagStatus == 2 ? "🚩 À suivre" : Row.FlagStatus == 1 ? "✔ Terminé" : "";
         public bool IsUnread => Row.IsRead == false;
+        public string ThreadText => Row.ThreadCount > 1 ? Row.ThreadCount.ToString() : "";
+        public string AuthText
+        {
+            get
+            {
+                if (!Row.Analysed || (Row.Spf == null && Row.Dkim == null && Row.Dmarc == null)) return "";
+                static string Mark(string v) => v == null ? "–" : v == "pass" ? "✔" : v == "fail" || v == "permerror" ? "✘" : v == "softfail" ? "⚠" : "~";
+                return $"SPF {Mark(Row.Spf)}  DKIM {Mark(Row.Dkim)}  DMARC {Mark(Row.Dmarc)}";
+            }
+        }
+        public string SpoofText => SearchService.SpoofLabels(Row.SpoofFlags);
+        public string DateFlagsText => SearchService.DateLabels(Row.DateFlags);
+        public string SensitiveText => PstBrowser.Core.Analysis.SensitiveScanner.Labels(Row.SensitiveFlags);
         public string TooltipText
         {
             get

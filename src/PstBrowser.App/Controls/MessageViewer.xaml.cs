@@ -39,6 +39,9 @@ namespace PstBrowser.App.Controls
 
         public MessageRef CurrentRef => _view?.Ref;
 
+        /// <summary>Raised when the user asks to see the whole thread of the displayed message (argument: thread id).</summary>
+        public event Action<long> ThreadRequested;
+
         public MessageViewer()
         {
             InitializeComponent();
@@ -122,6 +125,11 @@ namespace PstBrowser.App.Controls
             TxtLocation.Text = $"{kind}{v.Mailbox} › {v.FolderPath?.Replace("/", " › ")}   ({v.SourceName})" + (v.Ref.IsEmbedded ? "   · message joint" : "");
             TxtLocation.ToolTip = v.SourcePath;
             BtnBack.Visibility = _history.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            var alert = v.AlertText;
+            AlertBar.Visibility = alert.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            TxtAlert.Text = "⚠ " + alert;
+            BtnThread.Visibility = v.ThreadId.HasValue && v.ThreadCount > 1 && ThreadRequested != null ? Visibility.Visible : Visibility.Collapsed;
+            BtnThread.Content = $"Fil ({v.ThreadCount})";
 
             AttachmentsList.Children.Clear();
             foreach (var a in v.Attachments)
@@ -324,6 +332,17 @@ namespace PstBrowser.App.Controls
             if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
             var mref = _view.Ref;
             Run(() => AppServices.Messages.ExportEml(mref, dlg.FileName), "Export");
+        }
+
+        private void Analysis_Click(object sender, RoutedEventArgs e)
+        {
+            if (_view == null) return;
+            AnalysisWindow.Open(_view.Ref, _view.Subject, Window.GetWindow(this));
+        }
+
+        private void Thread_Click(object sender, RoutedEventArgs e)
+        {
+            if (_view?.ThreadId is long id) ThreadRequested?.Invoke(id);
         }
 
         private void PopOut_Click(object sender, RoutedEventArgs e)

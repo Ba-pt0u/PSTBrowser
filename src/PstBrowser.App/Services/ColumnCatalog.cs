@@ -62,6 +62,11 @@ namespace PstBrowser.App.Services
             new ColumnDef { Key = "msgid", Header = "Message-ID", Title = "Message-ID Internet", Binding = "MessageId", SortKey = "msgid", Width = 240 },
             new ColumnDef { Key = "conversation", Header = "Conversation", Title = "Conversation (sujet de la conversation)", Binding = "ConversationTopic", SortKey = "conversation", Width = 200 },
             new ColumnDef { Key = "read", Header = "Lu", Title = "Lu / non lu", Binding = "ReadText", SortKey = "read", Width = 58, MinWidth = 40 },
+            new ColumnDef { Key = "thread", Header = "Fil", Title = "Fil de conversation (nombre de messages)", Binding = "ThreadText", SortKey = "thread", Width = 44, MinWidth = 36 },
+            new ColumnDef { Key = "auth", Header = "SPF / DKIM / DMARC", Title = "Authentification (SPF, DKIM, DMARC)", Binding = "AuthText", SortKey = "spf", Width = 170 },
+            new ColumnDef { Key = "spoof", Header = "Usurpation ?", Title = "Indices d'usurpation", Binding = "SpoofText", SortKey = "spoof", Width = 200 },
+            new ColumnDef { Key = "dateflags", Header = "Dates", Title = "Anomalies de dates", Binding = "DateFlagsText", SortKey = "dateflags", Width = 180 },
+            new ColumnDef { Key = "sensitive", Header = "Sensible", Title = "Données sensibles détectées", Binding = "SensitiveText", SortKey = "sensitive", Width = 150 },
             new ColumnDef { Key = "flag", Header = "Suivi", Title = "Indicateur de suivi", Binding = "FlagText", SortKey = "flag", Width = 72 },
         };
 
@@ -78,7 +83,7 @@ namespace PstBrowser.App.Services
         private static readonly string[] InvestigationKeys =
         {
             "att", "date", "sent", "from", "fromaddr", "to", "cc", "bcc", "subject", "mailbox", "folderpath", "source",
-            "attcount", "attnames", "dup", "msgid", "read", "size",
+            "attcount", "attnames", "dup", "msgid", "thread", "auth", "spoof", "dateflags", "sensitive", "read", "size",
         };
 
         public static IReadOnlyList<string> PresetNames { get; } = new[] { Standard, Investigation };

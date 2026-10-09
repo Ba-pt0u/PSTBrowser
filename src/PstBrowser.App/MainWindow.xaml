@@ -51,7 +51,7 @@
                 </Grid.ColumnDefinitions>
                 <Grid>
                     <TextBox x:Name="TxtQuery" FontSize="14" Padding="6,5" VerticalContentAlignment="Center" KeyDown="TxtQuery_KeyDown"
-                             ToolTip="Mots (tous requis), &quot;expression exacte&quot;, mot*, a OR b, -exclu, de: à: objet: corps: pj: pjtexte: avant:2024-01-31 apres:2023-01-01"/>
+                             ToolTip="Mots (tous requis), &quot;expression exacte&quot;, mot*, a OR b, -exclu, de: à: objet: corps: pj: pjtexte: indice: spf: fil: avant:2024-01-31 apres:2023-01-01"/>
                     <TextBlock x:Name="QueryHint" Text="Rechercher dans tous les messages et leurs pièces jointes : mots, &quot;expression exacte&quot;, de:dupont, pjtexte:avenant…"
                                Foreground="#9AA0A6" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="14"/>
                 </Grid>
@@ -193,6 +193,8 @@
                             <ContextMenu>
                                 <MenuItem Header="Ouvrir dans une nouvelle fenêtre" Click="OpenInWindow_Click"/>
                                 <MenuItem Header="Afficher le dossier du message" Click="ShowFolder_Click"/>
+                                <MenuItem Header="Analyse du message (en-têtes, dates, données sensibles)…" Click="AnalyseRow_Click"/>
+                                <MenuItem Header="Afficher le fil de conversation" Click="ShowThreadRow_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Exporter la sélection (.eml)…" Click="ExportEmlSelection_Click"/>
                                 <MenuItem Header="Copier (date, expéditeur, objet)" Click="CopyRows_Click"/>

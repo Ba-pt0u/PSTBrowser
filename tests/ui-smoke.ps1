@@ -192,6 +192,42 @@ try {
     SelectRow 0
     Shot '5f-doc-balancing-agreement'
 
+    # Header analysis: Google Calendar invitations carry a Return-Path of another domain (typical of sending services)
+    $r = Search 'indice:returnpath'
+    Expect ($r -match '— [1-9][0-9]* élément') 'indice:returnpath : messages dont le Return-Path est d''un autre domaine'
+    SelectRow 0
+    $alert = $win.FindFirst($Scope::Descendants, (Cond $AE::NameProperty "Alertes d'analyse"))
+    Expect ($null -ne $alert) "bandeau d'alerte affiché dans le lecteur"
+    Shot '5i-indice-return-path'
+    $btnAnalysis = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
+                   Where-Object { $_.Current.Name -eq 'Analyse' } | Select-Object -First 1
+    Expect ($null -ne $btnAnalysis) 'bouton « Analyse » du lecteur'
+    $btnAnalysis.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $analysisWin = TopWindow 'Analyse du message'
+    Expect ($null -ne $analysisWin) "fenêtre « Analyse du message » ouverte"
+    Start-Sleep 4
+    $hopRows = $analysisWin.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::DataItem)))
+    Log ("  lignes dans la fenêtre d'analyse : " + $hopRows.Count)
+    Expect ($hopRows.Count -ge 4) "chemin des serveurs affiché (au moins 4 sauts)"
+    Shot '5j-analyse-en-tetes'
+    $analysisWin.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+    Start-Sleep 1
+
+    # Sensitive data (telephone number of a message of the enron sample) and conversation threads
+    $r = Search 'indice:tel'
+    Expect ($r -match '— [1-9][0-9]* élément') 'indice:tel : données sensibles détectées (téléphone)'
+    $r = Search 'objet:"Thanksgiving Day"'
+    Expect ($r -match 'élément') 'messages « Thanksgiving Day »'
+    SelectRow 0
+    $btnThread = $win.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
+                 Where-Object { $_.Current.Name -like 'Fil (*' } | Select-Object -First 1
+    Expect ($null -ne $btnThread) 'bouton « Fil (n) » du lecteur'
+    $btnThread.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep 3
+    $q = (ById 'TxtQuery').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+    Expect ($q -match '^fil:\d+$') "le fil s'affiche par la recherche « $q »"
+    Shot '5k-fil-de-conversation'
+
     # Column chooser: back to the "Standard" view
     try {
         (ById 'BtnColumns').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()

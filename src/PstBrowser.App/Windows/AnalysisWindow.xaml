@@ -1,0 +1,94 @@
+<Window x:Class="PstBrowser.App.Windows.AnalysisWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Analyse du message" Height="640" Width="980" MinWidth="640" MinHeight="400" WindowStartupLocation="CenterOwner" Icon="/Resources/app.ico">
+    <DockPanel Margin="12">
+        <TextBlock x:Name="TxtTitle" DockPanel.Dock="Top" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,2"/>
+        <TextBlock DockPanel.Dock="Top" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,8" FontSize="11"
+                   Text="Ces éléments sont des indices à vérifier, jamais des preuves : listes de diffusion, services d'envoi, décalages d'horloge et outils de migration produisent aussi ces signes."/>
+        <TabControl x:Name="Tabs">
+            <TabItem Header="En-têtes" x:Name="TabHeaders">
+                <DockPanel Margin="8">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Text="Authentification" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="TxtAuth" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="TxtAddresses" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBlock Text="Indices" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                        <ItemsControl x:Name="ListFindings" Margin="0,0,0,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="TxtHopsTitle" Text="Chemin des serveurs (du plus ancien au plus récent)" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                    </StackPanel>
+                    <DataGrid x:Name="GridHops" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#EEE" BorderBrush="{StaticResource BorderBrush}" RowHeaderWidth="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="N°" Binding="{Binding Index}" Width="36"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding TimeText}" Width="150"/>
+                            <DataGridTextColumn Header="Délai" Binding="{Binding DelayText}" Width="70"/>
+                            <DataGridTextColumn Header="De" Binding="{Binding From}" Width="220"/>
+                            <DataGridTextColumn Header="Adresse IP" Binding="{Binding FromIp}" Width="130"/>
+                            <DataGridTextColumn Header="Par" Binding="{Binding By}" Width="*"/>
+                            <DataGridTextColumn Header="Protocole" Binding="{Binding With}" Width="90"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Dates" x:Name="TabDates">
+                <DockPanel Margin="8">
+                    <ItemsControl x:Name="ListDateFindings" DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <DataGrid x:Name="GridDates" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#EEE" BorderBrush="{StaticResource BorderBrush}" RowHeaderWidth="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Label}" Width="260"/>
+                            <DataGridTextColumn Header="Valeur" Binding="{Binding ValueText}" Width="180"/>
+                            <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Données sensibles" x:Name="TabSensitive">
+                <DockPanel Margin="8">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button x:Name="BtnReveal" Content="Afficher les valeurs" Style="{StaticResource ToolButton}" Click="Reveal_Click"
+                                ToolTip="L'index ne conserve que les valeurs masquées : les valeurs complètes sont relues dans le texte indexé du message"/>
+                        <Button Content="Copier la liste" Style="{StaticResource ToolButton}" Click="CopySensitive_Click"/>
+                        <TextBlock x:Name="TxtSensitiveNote" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    <DataGrid x:Name="GridSensitive" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#EEE" BorderBrush="{StaticResource BorderBrush}" RowHeaderWidth="0" SelectionMode="Extended">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Type" Binding="{Binding KindLabel}" Width="170"/>
+                            <DataGridTextColumn Header="Valeur" Binding="{Binding Shown}" Width="260"/>
+                            <DataGridTextColumn Header="Emplacement" Binding="{Binding Location}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Fil de conversation" x:Name="TabThread">
+                <DockPanel Margin="8">
+                    <TextBlock x:Name="TxtThread" DockPanel.Dock="Top" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                    <DataGrid x:Name="GridThread" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#EEE" BorderBrush="{StaticResource BorderBrush}" RowHeaderWidth="0" MouseDoubleClick="Thread_DoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="120"/>
+                            <DataGridTextColumn Header="De" Binding="{Binding From}" Width="190"/>
+                            <DataGridTextColumn Header="Objet" Binding="{Binding Subject}" Width="*"/>
+                            <DataGridTextColumn Header="Boîte" Binding="{Binding Mailbox}" Width="150"/>
+                            <DataGridTextColumn Header="Dossier" Binding="{Binding FolderName}" Width="130"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

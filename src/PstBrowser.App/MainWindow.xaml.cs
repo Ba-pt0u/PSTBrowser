@@ -45,6 +45,7 @@ namespace PstBrowser.App
         {
             InitializeComponent();
             InitColumns();
+            Viewer.ThreadRequested += ShowThread;
             Tree.ItemsSource = _treeRoots;
             MessageList.ItemsSource = _rows;
             TxtQuery.TextChanged += (_, __) => QueryHint.Visibility = string.IsNullOrEmpty(TxtQuery.Text) ? Visibility.Visible : Visibility.Collapsed;
@@ -376,7 +377,7 @@ namespace PstBrowser.App
                 IndexProgress.Value = Math.Min(p.Done, p.Total);
                 var rate = p.MessagesPerSecond > 0 ? $" — {p.MessagesPerSecond:N0} éléments/s" : "";
                 var eta = "";
-                if (p.MessagesPerSecond > 1 && p.Total > p.Done && (p.Phase.StartsWith("Indexation") || p.Phase.StartsWith("Extraction")))
+                if (p.MessagesPerSecond > 1 && p.Total > p.Done && (p.Phase.StartsWith("Indexation") || p.Phase.StartsWith("Extraction") || p.Phase.StartsWith("Analyse") || p.Phase.StartsWith("Détection")))
                 {
                     var secs = (p.Total - p.Done) / p.MessagesPerSecond;
                     eta = secs < 90 ? " — moins de 2 min restantes" : $" — environ {Math.Ceiling(secs / 60):N0} min restantes";
@@ -637,6 +638,28 @@ namespace PstBrowser.App
                 MessageWindow.Open(new MessageRef(row.Id), _lastTerms, this, _lastQuery);
         }
 
+        /// <summary>Lists every message of a conversation thread (all mailboxes), oldest first.</summary>
+        private void ShowThread(long threadId)
+        {
+            if (AppServices.Workspace == null) return;
+            CmbScope.SelectedIndex = 0;
+            TxtQuery.Text = "fil:" + threadId;
+            SelectSort("date", false);
+            Search_Click(null, null);
+        }
+
+        private void ShowThreadRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(MessageList.SelectedItem is RowItem row)) return;
+            if (row.Row.ThreadId.HasValue && row.Row.ThreadCount > 1) ShowThread(row.Row.ThreadId.Value);
+            else SetStatus("Ce message est seul dans son fil de conversation (ou les fils ne sont pas encore calculés).");
+        }
+
+        private void AnalyseRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (MessageList.SelectedItem is RowItem row) AnalysisWindow.Open(new MessageRef(row.Id), row.Subject, this);
+        }
+
         private void ShowFolder_Click(object sender, RoutedEventArgs e)
         {
             if (!(MessageList.SelectedItem is RowItem row)) return;
@@ -758,6 +781,16 @@ CONTENU DES PIÈCES JOINTES
   les images scannées ne sont pas reconnues (pas d'OCR). L'étape est reprenable après une interruption.
   Dans le lecteur, les pièces jointes qui contiennent les termes recherchés sont signalées (🔎) ;
   clic sur une pièce jointe puis « Aperçu du texte » : texte extrait, termes surlignés.
+
+AIDE À L'ENQUÊTE
+  Bouton « Analyse » du lecteur (ou clic droit sur un message) : chemin des serveurs, SPF / DKIM / DMARC, indices
+  d'usurpation (Reply-To ou Return-Path d'un autre domaine, nom affiché trompeur, domaine ressemblant), dates
+  incohérentes, données sensibles (IBAN, cartes, sécurité sociale, téléphones : valeurs masquées) et fil de conversation.
+  Recherche : indice:usurpation  indice:replyto  indice:returnpath  indice:nomtrompeur  indice:domaine  indice:auth
+              indice:dates  indice:sensible  indice:iban  indice:carte  indice:secu  indice:tel
+              spf:fail  dkim:pass  dmarc:none  spf:absent    fil:1234 (un fil de conversation)
+  Ce sont des indices à vérifier, pas des preuves (listes de diffusion, services d'envoi, horloges, migrations…).
+  Le bouton « Fil (n) » du lecteur liste tous les messages de la conversation, toutes boîtes confondues.
 
 COLONNES DE LA LISTE
   Clic droit sur un en-tête (ou bouton « Colonnes… ») : afficher ou masquer des colonnes, vues « Standard »
