@@ -24,23 +24,91 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Compiler SQLite
-        run: native/build-sqlite-linux.sh
+      - name: Compiler SQLite (glibc 2.28 — RHEL 8, Debian 10, Ubuntu 20.04 et plus récents)
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src -u "$(id -u):$(id -g)"
+          quay.io/pypa/manylinux_2_28_x86_64 native/build-sqlite-linux.sh
 
-      - name: Compiler le moteur et l'outil en ligne de commande
-        run: dotnet build src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release
+      - name: Vérifier la version de glibc requise
+        run: native/check-glibc.sh native/bin/linux-x64/libe_sqlite3.so 2.28
+
+      - name: Publier l'outil en ligne de commande (exécutable unique)
+        run: >
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r linux-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/cli
 
       - name: Récupérer les fichiers de test publics (PST/OST/MSG)
         run: |
           git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
           git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
 
-      - name: Tests de bout en bout
+      - name: Tests de bout en bout (exécutable Linux)
         run: >
-          dotnet src/PstBrowser.Cli/bin/Release/net10.0/pstbrowser-cli.dll selftest
+          out/cli/pstbrowser-cli selftest
           "$RUNNER_TEMP/selftest"
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Mettre à disposition l'exécutable de test
+        uses: actions/upload-artifact@v5
+        with:
+          name: pstbrowser-cli-linux-x64
+          path: out/cli/pstbrowser-cli
+          retention-days: 14
+
+  macos:
+    name: Moteur et outil en ligne de commande (macOS Apple Silicon et Intel)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (bibliothèque universelle arm64 + x86_64)
+        run: |
+          native/build-sqlite-macos.sh
+          lipo -archs native/bin/osx/libe_sqlite3.dylib
+
+      - name: Publier l'outil en ligne de commande (Apple Silicon et Intel)
+        run: |
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r $rid --self-contained true \
+              -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/$rid
+            file out/$rid/pstbrowser-cli
+          done
+
+      - name: Récupérer les fichiers de test publics (PST/OST/MSG)
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+
+      - name: Tests de bout en bout (Apple Silicon)
+        run: >
+          out/osx-arm64/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest-arm64"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Installer Rosetta 2
+        run: /usr/bin/pgrep -q oahd || sudo softwareupdate --install-rosetta --agree-to-license
+
+      - name: Tests de bout en bout (Intel, sous Rosetta)
+        run: >
+          arch -x86_64 out/osx-x64/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest-x64"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Mettre à disposition les exécutables de test
+        uses: actions/upload-artifact@v5
+        with:
+          name: pstbrowser-cli-macos
+          path: |
+            out/osx-arm64/pstbrowser-cli
+            out/osx-x64/pstbrowser-cli
+          retention-days: 14
 
   windows:
     name: Application Windows

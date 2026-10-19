@@ -303,6 +303,7 @@ namespace PstBrowser.Cli
             Check(th[30].thread == 30 && th[31].thread == 30, "fil par index de conversation Outlook");
             Check(th[40].thread == 40 && th[41].thread == 40 && th[42].thread == 42 && th[50].thread == 50, "même objet : rapproché seulement avec un participant commun et dans les 120 jours");
             Check(ThreadBuilder.NormalizeSubject("RE: TR : Fwd: Réunion  budget") == "réunion budget", "objet normalisé (RE:, TR:, FW:)");
+            Check(!Workspace.IsOnNetworkDrive(Path.GetTempPath()), "dossier temporaire local : journal WAL autorisé");
         }
     }
 }

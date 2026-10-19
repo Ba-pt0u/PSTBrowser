@@ -97,12 +97,32 @@ namespace PstBrowser.Core.Index
             try
             {
                 var full = System.IO.Path.GetFullPath(folder);
-                if (full.StartsWith(@"\\") || full.StartsWith("//")) return true;
-                var root = System.IO.Path.GetPathRoot(full);
-                return !string.IsNullOrEmpty(root) && new DriveInfo(root).DriveType == DriveType.Network;
+                if (OperatingSystem.IsWindows())
+                {
+                    if (full.StartsWith(@"\\") || full.StartsWith("//")) return true;
+                    var root = System.IO.Path.GetPathRoot(full);
+                    return !string.IsNullOrEmpty(root) && new DriveInfo(root).DriveType == DriveType.Network;
+                }
+                // macOS / Linux: the mount point holding the folder is the one with the longest matching root
+                var path = full.TrimEnd('/') + "/";
+                DriveInfo mount = null;
+                var best = -1;
+                foreach (var d in DriveInfo.GetDrives())
+                {
+                    var r = d.RootDirectory.FullName.TrimEnd('/') + "/";
+                    if (r.Length > best && path.StartsWith(r, StringComparison.Ordinal)) { mount = d; best = r.Length; }
+                }
+                if (mount == null) return false;
+                return mount.DriveType == DriveType.Network || NetworkFileSystems.Contains(mount.DriveFormat ?? "");
             }
             catch { return false; }
         }
+
+        /// <summary>File systems on which SQLite's WAL mode (shared memory) is not reliable.</summary>
+        private static readonly HashSet<string> NetworkFileSystems = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "nfs", "nfs4", "cifs", "smbfs", "smb3", "smb2", "afpfs", "webdav", "davfs", "fuse.sshfs", "sshfs", "9p", "fuse.rclone", "ceph", "glusterfs", "fuse.glusterfs",
+        };
 
         private void EnsureSchema()
         {

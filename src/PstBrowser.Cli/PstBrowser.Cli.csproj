@@ -12,9 +12,16 @@
   <ItemGroup>
     <ProjectReference Include="..\PstBrowser.Core\PstBrowser.Core.csproj" />
   </ItemGroup>
-  <!-- Native SQLite built from native/sqlite (see native/build-sqlite-*.{cmd,sh}) -->
+  <!-- Native SQLite built from native/sqlite (see native/build-sqlite-*.{cmd,sh}): the library of the target platform only -->
+  <PropertyGroup>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</SqliteNativeTarget>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win</SqliteNativeTarget>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx</SqliteNativeTarget>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux</SqliteNativeTarget>
+  </PropertyGroup>
   <ItemGroup>
-    <None Include="..\..\native\bin\linux-x64\libe_sqlite3.so" Link="libe_sqlite3.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\native\bin\linux-x64\libe_sqlite3.so')" />
-    <None Include="..\..\native\bin\win-x64\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\native\bin\win-x64\e_sqlite3.dll')" />
+    <None Include="..\..\native\bin\linux-x64\libe_sqlite3.so" Link="libe_sqlite3.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="$(SqliteNativeTarget.StartsWith('linux')) and Exists('..\..\native\bin\linux-x64\libe_sqlite3.so')" />
+    <None Include="..\..\native\bin\osx\libe_sqlite3.dylib" Link="libe_sqlite3.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="$(SqliteNativeTarget.StartsWith('osx')) and Exists('..\..\native\bin\osx\libe_sqlite3.dylib')" />
+    <None Include="..\..\native\bin\win-x64\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="$(SqliteNativeTarget.StartsWith('win')) and Exists('..\..\native\bin\win-x64\e_sqlite3.dll')" />
   </ItemGroup>
 </Project>
