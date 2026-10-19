@@ -17,6 +17,7 @@ jobs:
   engine-tests-linux:
     name: Tests du moteur (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -37,6 +38,9 @@ jobs:
           dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r linux-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/cli
 
+      - name: Outil de diagnostic (piles d'appels en cas de blocage)
+        run: dotnet tool install -g dotnet-stack || true
+
       - name: Récupérer les fichiers de test publics (PST/OST/MSG)
         run: |
           git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
@@ -44,7 +48,7 @@ jobs:
 
       - name: Tests de bout en bout (exécutable Linux)
         run: >
-          out/cli/pstbrowser-cli selftest
+          tools/watchdog.sh 1200 out/cli/pstbrowser-cli selftest
           "$RUNNER_TEMP/selftest"
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
@@ -59,6 +63,7 @@ jobs:
   macos:
     name: Moteur et outil en ligne de commande (macOS Apple Silicon et Intel)
     runs-on: macos-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -80,6 +85,9 @@ jobs:
             codesign --verify --verbose out/$rid/pstbrowser-cli
           done
 
+      - name: Outil de diagnostic (piles d'appels en cas de blocage)
+        run: dotnet tool install -g dotnet-stack || true
+
       - name: Récupérer les fichiers de test publics (PST/OST/MSG)
         run: |
           git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
@@ -87,7 +95,7 @@ jobs:
 
       - name: Tests de bout en bout (Apple Silicon)
         run: >
-          out/osx-arm64/pstbrowser-cli selftest
+          tools/watchdog.sh 1200 out/osx-arm64/pstbrowser-cli selftest
           "$RUNNER_TEMP/selftest-arm64"
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
@@ -97,7 +105,7 @@ jobs:
 
       - name: Tests de bout en bout (Intel, sous Rosetta)
         run: >
-          arch -x86_64 out/osx-x64/pstbrowser-cli selftest
+          tools/watchdog.sh 1200 arch -x86_64 out/osx-x64/pstbrowser-cli selftest
           "$RUNNER_TEMP/selftest-x64"
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
@@ -114,6 +122,7 @@ jobs:
   windows:
     name: Application Windows
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -143,6 +152,7 @@ jobs:
 
       - name: Tests de bout en bout (exécutable Windows)
         shell: bash
+        timeout-minutes: 20
         run: >
           out/cli/pstbrowser-cli.exe selftest
           "$RUNNER_TEMP/selftest"
