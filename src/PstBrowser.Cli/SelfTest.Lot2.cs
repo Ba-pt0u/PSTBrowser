@@ -304,6 +304,8 @@ namespace PstBrowser.Cli
             Check(th[40].thread == 40 && th[41].thread == 40 && th[42].thread == 42 && th[50].thread == 50, "même objet : rapproché seulement avec un participant commun et dans les 120 jours");
             Check(ThreadBuilder.NormalizeSubject("RE: TR : Fwd: Réunion  budget") == "réunion budget", "objet normalisé (RE:, TR:, FW:)");
             Check(!Workspace.IsOnNetworkDrive(Path.GetTempPath()), "dossier temporaire local : journal WAL autorisé");
+            Check(AttachmentSafety.IsDangerous("facture.PDF.exe") && AttachmentSafety.IsDangerous("Lisez-moi.command") && AttachmentSafety.IsDangerous("outil.AppImage")
+                  && AttachmentSafety.IsDangerous("installer.sh") && !AttachmentSafety.IsDangerous("rapport.pdf") && !AttachmentSafety.IsDangerous(null), "pièces jointes exécutables (Windows, macOS, Linux) jamais ouvertes directement");
         }
     }
 }

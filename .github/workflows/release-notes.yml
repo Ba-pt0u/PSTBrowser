@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  attestations: read
 
 jobs:
   notes:
@@ -28,6 +29,12 @@ jobs:
           $tag = "v$v"
           $commit = gh release view $tag --json targetCommitish --jq .targetCommitish
           gh release download $tag --pattern SHA256SUMS.txt --dir $env:RUNNER_TEMP --clobber
-          ./tools/release-notes.ps1 -Version $v -Commit $commit -SumsFile (Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt') -Output release-notes.md
+          $sums = Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt'
+          # attestations exist from the first multi-platform release onwards
+          $digest = ((Get-Content $sums | Where-Object { $_.Trim() } | Select-Object -First 1) -split '\s+')[0]
+          gh api "repos/${{ github.repository }}/attestations/sha256:$digest" --silent 2>$null
+          $attested = $LASTEXITCODE -eq 0
+          $global:LASTEXITCODE = 0
+          ./tools/release-notes.ps1 -Version $v -Commit $commit -SumsFile $sums -Attested:$attested -Output release-notes.md
           gh release edit $tag --notes-file release-notes.md
           Write-Host "Notes de $tag mises à jour."

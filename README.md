@@ -103,15 +103,31 @@ Les macros ne sont jamais exécutées ; aucun document n'est ouvert dans une app
 - Affichage des messages dans WebView2 (moteur Edge) en mode InPrivate, JavaScript désactivé, toutes les requêtes
   interceptées : seul le contenu du message, servi depuis la mémoire, est affiché ; images distantes et pixels
   de suivi bloqués ; politique CSP stricte ; clic sur un lien = demande de confirmation.
-- Les pièces jointes exécutables (`.exe`, `.js`, `.vbs`, `.lnk`, macros Office…) ne peuvent pas être ouvertes
-  directement, seulement enregistrées. Les pièces jointes ouvertes sont copiées dans un dossier temporaire
+- Les pièces jointes exécutables (`.exe`, `.js`, `.vbs`, `.lnk`, macros Office, `.app`, `.command`, `.pkg`, `.sh`,
+  `.desktop`, `.AppImage`…) ne peuvent pas être ouvertes directement, seulement enregistrées. Les pièces jointes ouvertes sont copiées dans un dossier temporaire
   supprimé à la fermeture.
 - Dépendances réduites au minimum et auditables (voir ci-dessous). SQLite est compilé depuis ses sources par la CI.
 
 ## Outil en ligne de commande
 
-`pstbrowser-cli.exe` utilise le même moteur et le même format d'index (utile pour préparer un très gros
-dossier d'affaire sur un serveur, ou pour des scripts) :
+`pstbrowser-cli` utilise le même moteur et le même format d'index (utile pour préparer un très gros
+dossier d'affaire sur un serveur, ou pour des scripts). Il existe pour **Windows x64** (`pstbrowser-cli.exe`),
+**macOS** 12 ou plus récent, Apple Silicon et Intel (`pstbrowser-cli-macos-arm64.tar.gz`, `pstbrowser-cli-macos-x64.tar.gz`)
+et **Linux x64** avec glibc 2.28 ou plus récente (`pstbrowser-cli-linux-x64.tar.gz`) ; chaque version est testée
+sur ces plateformes par la CI avant publication. Exécutable unique, sans installation ni droits administrateur :
+
+```
+tar -xzf pstbrowser-cli-macos-arm64.tar.gz      # ou -linux-x64
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing
+./pstbrowser-cli selftest-unit
+```
+
+Sur macOS, l'exécutable est signé « ad hoc » mais pas notarié par Apple (cela demanderait un compte développeur
+payant) : s'il a été téléchargé avec un navigateur, macOS refuse de l'ouvrir. Après avoir vérifié l'empreinte,
+levez ce blocage une fois avec `xattr -d com.apple.quarantine pstbrowser-cli`. En parc géré (MDM), la DSI peut
+déployer l'exécutable directement, sans ce blocage.
+
+Exemples (chemins Windows ; sous macOS / Linux, `~/Affaires/Affaire1`, `/Volumes/Export/PST`…) :
 
 ```
 pstbrowser-cli add     D:\Affaire1 E:\Export\PST
@@ -127,7 +143,7 @@ pstbrowser-cli eml     D:\Affaire1 12345 message.eml
 ## Architecture
 
 ```
-src/PstBrowser.Core   moteur, multiplateforme (.NET 10)
+src/PstBrowser.Core   moteur, multiplateforme (.NET 10 ; Windows, macOS, Linux)
   Mail/               lecture PST/OST (XstReader), MSG (lecteur Compound File maison), modèle commun
   Index/              dossier d'affaire (schéma 2, migration automatique), indexation en 3 passes (structure,
                       contenu, pièces jointes), reprise
@@ -152,8 +168,18 @@ native\build-sqlite-windows.cmd
 dotnet publish src\PstBrowser.App\PstBrowser.App.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o out
 ```
 
-La CI (`.github/workflows/build.yml`) compile et teste à chaque push ; un tag `vX.Y.Z` déclenche
-`.github/workflows/release.yml`, qui publie la release avec les empreintes SHA-256.
+Outil en ligne de commande sous macOS ou Linux (compilateur C : Xcode Command Line Tools ou gcc) :
+
+```
+native/build-sqlite-macos.sh        # bibliothèque universelle Apple Silicon + Intel ; Linux : native/build-sqlite-linux.sh
+dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -o out
+```
+
+La CI (`.github/workflows/build.yml`) compile et teste à chaque push sous Windows, Linux, macOS Apple Silicon et
+macOS Intel (sous Rosetta). `.github/workflows/release.yml` (onglet Actions, « Run workflow » avec la version, ou tag
+`vX.Y.Z`) teste à nouveau les exécutables de chaque plateforme, puis publie la release avec les empreintes SHA-256
+et une **attestation de provenance** signée (Sigstore) pour chaque fichier, vérifiable avec
+`gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser`. L'option « Essai à blanc » fait tout sauf la publication.
 
 ## Composants tiers
 

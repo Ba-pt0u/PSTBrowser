@@ -23,13 +23,6 @@ namespace PstBrowser.App.Controls
         private int _loadId;
         private readonly Stack<MessageRef> _history = new Stack<MessageRef>();
 
-        private static readonly HashSet<string> DangerousExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ".exe", ".com", ".scr", ".pif", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
-            ".msi", ".msp", ".lnk", ".reg", ".jar", ".cpl", ".dll", ".sys", ".inf", ".scf", ".url", ".appx", ".msix", ".application",
-            ".gadget", ".iso", ".img", ".vhd", ".vhdx", ".chm", ".docm", ".xlsm", ".pptm", ".xlam", ".settingcontent-ms",
-        };
-
         /// <summary>Hides the "new window" button (used inside a message window).</summary>
         public bool ShowPopOutButton
         {
@@ -236,7 +229,7 @@ namespace PstBrowser.App.Controls
         private void OpenAttachment(AttachmentView a)
         {
             var ext = Path.GetExtension(a.FileName ?? "");
-            if (DangerousExtensions.Contains(ext))
+            if (AttachmentSafety.IsDangerous(a.FileName))
             {
                 MessageBox.Show(Window.GetWindow(this),
                     $"Par sécurité, les fichiers « {ext} » ne peuvent pas être ouverts directement.\nEnregistrez-le puis faites-le analyser si nécessaire.",

@@ -3,6 +3,21 @@
 Les notes de chaque release GitHub reprennent la section de la version correspondante.
 Une version ne peut pas être publiée (`release.yml`) sans section datée dans ce fichier.
 
+## [Non publié]
+
+### Nouveautés — multiplateforme
+- **Outil en ligne de commande pour macOS** (Apple Silicon et Intel, macOS 12 ou plus récent) **et Linux x64**
+  (glibc 2.28 ou plus récente) : même moteur, même format d'index que sous Windows. Chaque version est testée sur
+  Windows, Linux, macOS Apple Silicon et macOS Intel avant publication.
+- **Attestations de provenance** (Sigstore) pour chaque fichier publié : `gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser`
+  prouve qu'il a été compilé par GitHub Actions à partir de ce dépôt.
+
+### Corrections
+- Dossier d'affaire sur un partage réseau monté sous macOS ou Linux (SMB, NFS, AFP, sshfs…) : le journal SQLite
+  adapté aux disques réseau est désormais utilisé, comme sous Windows.
+- Pièces jointes exécutables propres à macOS et Linux (`.app`, `.command`, `.pkg`, `.dmg`, `.sh`, `.desktop`,
+  `.AppImage`…) : jamais ouvertes directement, seulement enregistrables.
+
 ## [1.2.0] - 2026-10-19
 
 ### Nouveautés — aide à l'enquête

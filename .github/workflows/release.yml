@@ -3,6 +3,8 @@ name: Release
 # Publie une release GitHub :
 #  - soit en poussant un tag de version :  git tag v1.0.0 && git push origin v1.0.0
 #  - soit depuis l'onglet Actions > Release > « Run workflow » en indiquant la version (le tag est alors créé).
+# « Essai à blanc » compile et teste tout, sans créer de release ni d'attestation : les fichiers et les notes
+# sont alors disponibles dans les artefacts de l'exécution.
 on:
   push:
     tags: ['v*']
@@ -11,24 +13,27 @@ on:
       version:
         description: 'Version à publier (ex. 1.0.0)'
         required: true
+      dry_run:
+        description: 'Essai à blanc (ne rien publier)'
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  release:
-    name: Release Windows x64
-    runs-on: windows-latest
+  prepare:
+    name: Version et journal des modifications
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Version
         id: v
@@ -44,6 +49,17 @@ jobs:
         shell: pwsh
         run: ./tools/release-notes.ps1 -Version "${{ steps.v.outputs.version }}" -Commit "${{ github.sha }}" -Output "$env:RUNNER_TEMP/notes-check.md"
 
+  windows:
+    name: Windows x64
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Compiler SQLite (MSVC)
         shell: cmd
         run: native\build-sqlite-windows.cmd
@@ -51,13 +67,13 @@ jobs:
       - name: Publier l'application
         run: >
           dotnet publish src/PstBrowser.App/PstBrowser.App.csproj -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:Version=${{ steps.v.outputs.version }} -o out/app
+          -p:PublishSingleFile=true -p:Version=${{ needs.prepare.outputs.version }} -o out/app
 
       - name: Publier l'outil en ligne de commande
         run: >
           dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true
-          -p:Version=${{ steps.v.outputs.version }} -o out/cli
+          -p:Version=${{ needs.prepare.outputs.version }} -o out/cli
 
       - name: Récupérer les fichiers de test publics
         shell: bash
@@ -73,20 +89,174 @@ jobs:
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
 
-      - name: Préparer les fichiers et les empreintes
+      - name: Préparer les fichiers
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp out/app/PstBrowser.exe out/cli/pstbrowser-cli.exe dist/
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-windows
+          path: dist/*
+          retention-days: 7
+
+  macos:
+    name: macOS (Apple Silicon et Intel)
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (bibliothèque universelle arm64 + x86_64)
+        run: native/build-sqlite-macos.sh
+
+      - name: Publier l'outil en ligne de commande
+        run: |
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r $rid --self-contained true \
+              -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+              -p:Version=${{ needs.prepare.outputs.version }} -o out/$rid
+            codesign --verify --verbose out/$rid/pstbrowser-cli
+          done
+
+      - name: Récupérer les fichiers de test publics
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+
+      - name: Tests de bout en bout avant publication (Apple Silicon)
+        run: >
+          out/osx-arm64/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest-arm64"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Installer Rosetta 2
+        run: /usr/bin/pgrep -q oahd || sudo softwareupdate --install-rosetta --agree-to-license
+
+      - name: Tests de bout en bout avant publication (Intel, sous Rosetta)
+        run: >
+          arch -x86_64 out/osx-x64/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest-x64"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Préparer les archives
+        run: |
+          mkdir -p dist
+          tar -czf dist/pstbrowser-cli-macos-arm64.tar.gz -C out/osx-arm64 pstbrowser-cli
+          tar -czf dist/pstbrowser-cli-macos-x64.tar.gz -C out/osx-x64 pstbrowser-cli
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-macos
+          path: dist/*
+          retention-days: 7
+
+  linux:
+    name: Linux x64
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (compatible glibc 2.28 et plus récente)
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src -u "$(id -u):$(id -g)"
+          quay.io/pypa/manylinux_2_28_x86_64 native/build-sqlite-linux.sh
+
+      - name: Vérifier la version de glibc requise
+        run: native/check-glibc.sh native/bin/linux-x64/libe_sqlite3.so 2.28
+
+      - name: Publier l'outil en ligne de commande
+        run: >
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r linux-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -p:Version=${{ needs.prepare.outputs.version }} -o out/cli
+
+      - name: Récupérer les fichiers de test publics
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+
+      - name: Tests de bout en bout avant publication
+        run: >
+          out/cli/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest"
+          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
+          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
+
+      - name: Préparer l'archive
+        run: |
+          mkdir -p dist
+          tar -czf dist/pstbrowser-cli-linux-x64.tar.gz -C out/cli pstbrowser-cli
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-linux
+          path: dist/*
+          retention-days: 7
+
+  publish:
+    name: Publication
+    needs: [prepare, windows, macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: Empreintes et notes de version
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item out/app/PstBrowser.exe dist/PstBrowser.exe
-          Copy-Item out/cli/pstbrowser-cli.exe dist/pstbrowser-cli.exe
-          $lines = Get-ChildItem dist -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
-          $lines | Set-Content -Encoding ascii dist/SHA256SUMS.txt
-          ./tools/release-notes.ps1 -Version "${{ steps.v.outputs.version }}" -Commit "${{ github.sha }}" -SumsFile dist/SHA256SUMS.txt -Output release-notes.md
+          Push-Location dist
+          $lines = Get-ChildItem -File | Sort-Object Name | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
+          $lines | Set-Content -Encoding ascii SHA256SUMS.txt
+          Pop-Location
+          $attested = "${{ inputs.dry_run }}" -ne "true"
+          ./tools/release-notes.ps1 -Version "${{ needs.prepare.outputs.version }}" -Commit "${{ github.sha }}" -SumsFile dist/SHA256SUMS.txt -Attested:$attested -Output release-notes.md
+          Get-Content release-notes.md -Raw >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Attestations de provenance (Sigstore)
+        if: ${{ inputs.dry_run != true }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/PstBrowser.exe
+            dist/pstbrowser-cli.exe
+            dist/pstbrowser-cli-*.tar.gz
 
       - name: Créer la release GitHub
-        shell: bash
+        if: ${{ inputs.dry_run != true }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "${{ steps.v.outputs.tag }}" dist/PstBrowser.exe dist/pstbrowser-cli.exe dist/SHA256SUMS.txt
-          --target "${{ github.sha }}" --title "PST Browser ${{ steps.v.outputs.version }}" --notes-file release-notes.md
+          gh release create "${{ needs.prepare.outputs.tag }}" dist/*
+          --target "${{ github.sha }}" --title "PST Browser ${{ needs.prepare.outputs.version }}" --notes-file release-notes.md
+
+      - name: Fichiers de l'essai à blanc
+        if: ${{ inputs.dry_run == true }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: essai-a-blanc-${{ needs.prepare.outputs.version }}
+          path: |
+            dist/*
+            release-notes.md
+          retention-days: 7
