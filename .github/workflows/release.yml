@@ -40,6 +40,10 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
           "tag=v$v" >> $env:GITHUB_OUTPUT
 
+      - name: Vérifier le journal des modifications
+        shell: pwsh
+        run: ./tools/release-notes.ps1 -Version "${{ steps.v.outputs.version }}" -Commit "${{ github.sha }}" -Output "$env:RUNNER_TEMP/notes-check.md"
+
       - name: Compiler SQLite (MSVC)
         shell: cmd
         run: native\build-sqlite-windows.cmd
@@ -77,25 +81,7 @@ jobs:
           Copy-Item out/cli/pstbrowser-cli.exe dist/pstbrowser-cli.exe
           $lines = Get-ChildItem dist -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
           $lines | Set-Content -Encoding ascii dist/SHA256SUMS.txt
-          $notes = @"
-          ## PST Browser ${{ steps.v.outputs.version }}
-
-          Visualiseur **hors ligne** de fichiers PST, OST et MSG (exports eDiscovery Microsoft Purview).
-
-          - ``PstBrowser.exe`` : l'application (exécutable unique, aucune installation, aucun droit administrateur).
-          - ``pstbrowser-cli.exe`` : le même moteur en ligne de commande (indexation de gros volumes, scripts).
-
-          Prérequis : Windows 10 ou 11 x64 (le composant Microsoft Edge WebView2, fourni avec Windows, est utilisé pour afficher les messages).
-
-          Empreintes SHA-256 :
-          ``````
-          $($lines -join "`n")
-          ``````
-          Vérification : ``Get-FileHash .\PstBrowser.exe -Algorithm SHA256``
-
-          Compilé par GitHub Actions à partir du commit ${{ github.sha }}.
-          "@
-          $notes -replace '(?m)^          ', '' | Set-Content -Encoding utf8 release-notes.md
+          ./tools/release-notes.ps1 -Version "${{ steps.v.outputs.version }}" -Commit "${{ github.sha }}" -SumsFile dist/SHA256SUMS.txt -Output release-notes.md
 
       - name: Créer la release GitHub
         shell: bash

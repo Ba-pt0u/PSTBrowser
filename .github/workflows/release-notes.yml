@@ -1,0 +1,33 @@
+name: Notes de release
+
+# Réécrit les notes d'une release GitHub existante à partir de CHANGELOG.md (section de la version),
+# en conservant les fichiers et les empreintes SHA-256 déjà publiés.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version dont les notes sont à réécrire (ex. 1.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Réécrire les notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ inputs.version }}".Trim().TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Version invalide : $v (attendu : 1.2.3)" }
+          $tag = "v$v"
+          $commit = gh release view $tag --json targetCommitish --jq .targetCommitish
+          gh release download $tag --pattern SHA256SUMS.txt --dir $env:RUNNER_TEMP --clobber
+          ./tools/release-notes.ps1 -Version $v -Commit $commit -SumsFile (Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt') -Output release-notes.md
+          gh release edit $tag --notes-file release-notes.md
+          Write-Host "Notes de $tag mises à jour."
