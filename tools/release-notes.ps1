@@ -33,7 +33,7 @@ if ($mac) {
     $downloads.Add('')
     $downloads.Add('**macOS 12 ou plus récent** — outil en ligne de commande')
     if ($files -contains 'pstbrowser-cli-macos-arm64.tar.gz') { $downloads.Add('- `pstbrowser-cli-macos-arm64.tar.gz` : Mac Apple Silicon (M1 et suivants).') }
-    if ($files -contains 'pstbrowser-cli-macos-x64.tar.gz') { $downloads.Add('- `pstbrowser-cli-macos-x64.tar.gz` : Mac Intel.') }
+    if ($files -contains 'pstbrowser-cli-macos-x64.tar.gz') { $downloads.Add('- `pstbrowser-cli-macos-x64.tar.gz` : Mac Intel (sur un Mac Apple Silicon, prendre la version arm64 : sous Rosetta 2, la version Intel peut se bloquer).') }
     $downloads.Add("- L'exécutable n'est pas notarié par Apple : si macOS refuse de l'ouvrir, lever le blocage une fois avec ``xattr -d com.apple.quarantine pstbrowser-cli`` (après avoir vérifié l'empreinte).")
 }
 if ($files -contains 'pstbrowser-cli-linux-x64.tar.gz') {

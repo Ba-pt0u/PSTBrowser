@@ -105,9 +105,15 @@ jobs:
           retention-days: 7
 
   macos:
-    name: macOS (Apple Silicon et Intel)
+    name: macOS ${{ matrix.label }}
     needs: prepare
-    runs-on: macos-latest
+    # Intel is tested on a real Intel Mac: under Rosetta 2, the .NET runtime can hang while suspending its threads
+    strategy:
+      matrix:
+        include:
+          - { rid: osx-arm64, runner: macos-latest, label: Apple Silicon, archive: pstbrowser-cli-macos-arm64.tar.gz }
+          - { rid: osx-x64, runner: macos-15-intel, label: Intel, archive: pstbrowser-cli-macos-x64.tar.gz }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -121,12 +127,10 @@ jobs:
 
       - name: Publier l'outil en ligne de commande
         run: |
-          for rid in osx-arm64 osx-x64; do
-            dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r $rid --self-contained true \
-              -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true \
-              -p:Version=${{ needs.prepare.outputs.version }} -o out/$rid
-            codesign --verify --verbose out/$rid/pstbrowser-cli
-          done
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+            -p:Version=${{ needs.prepare.outputs.version }} -o out/cli
+          codesign --verify --verbose out/cli/pstbrowser-cli
 
       - name: Outil de diagnostic (piles d'appels en cas de blocage)
         run: dotnet tool install -g dotnet-stack || true
@@ -136,32 +140,21 @@ jobs:
           git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
           git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
 
-      - name: Tests de bout en bout avant publication (Apple Silicon)
+      - name: Tests de bout en bout avant publication
         run: >
-          tools/watchdog.sh 1200 out/osx-arm64/pstbrowser-cli selftest
-          "$RUNNER_TEMP/selftest-arm64"
+          tools/watchdog.sh 1200 out/cli/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest"
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
 
-      - name: Installer Rosetta 2
-        run: /usr/bin/pgrep -q oahd || sudo softwareupdate --install-rosetta --agree-to-license
-
-      - name: Tests de bout en bout avant publication (Intel, sous Rosetta)
-        run: >
-          tools/watchdog.sh 1200 arch -x86_64 out/osx-x64/pstbrowser-cli selftest
-          "$RUNNER_TEMP/selftest-x64"
-          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
-          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
-
-      - name: Préparer les archives
+      - name: Préparer l'archive
         run: |
           mkdir -p dist
-          tar -czf dist/pstbrowser-cli-macos-arm64.tar.gz -C out/osx-arm64 pstbrowser-cli
-          tar -czf dist/pstbrowser-cli-macos-x64.tar.gz -C out/osx-x64 pstbrowser-cli
+          tar -czf dist/${{ matrix.archive }} -C out/cli pstbrowser-cli
 
       - uses: actions/upload-artifact@v5
         with:
-          name: dist-macos
+          name: dist-${{ matrix.rid }}
           path: dist/*
           retention-days: 7
 

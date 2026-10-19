@@ -61,8 +61,15 @@ jobs:
           retention-days: 14
 
   macos:
-    name: Moteur et outil en ligne de commande (macOS Apple Silicon et Intel)
-    runs-on: macos-latest
+    name: Moteur et outil en ligne de commande (macOS ${{ matrix.label }})
+    # Intel is tested on a real Intel Mac: under Rosetta 2, the .NET runtime can hang while suspending its threads
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: osx-arm64, runner: macos-latest, label: Apple Silicon }
+          - { rid: osx-x64, runner: macos-15-intel, label: Intel }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -76,14 +83,12 @@ jobs:
           native/build-sqlite-macos.sh
           lipo -archs native/bin/osx/libe_sqlite3.dylib
 
-      - name: Publier l'outil en ligne de commande (Apple Silicon et Intel)
+      - name: Publier l'outil en ligne de commande (exécutable unique)
         run: |
-          for rid in osx-arm64 osx-x64; do
-            dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r $rid --self-contained true \
-              -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/$rid
-            file out/$rid/pstbrowser-cli
-            codesign --verify --verbose out/$rid/pstbrowser-cli
-          done
+          dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/cli
+          file out/cli/pstbrowser-cli
+          codesign --verify --verbose out/cli/pstbrowser-cli
 
       - name: Outil de diagnostic (piles d'appels en cas de blocage)
         run: dotnet tool install -g dotnet-stack || true
@@ -93,30 +98,18 @@ jobs:
           git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
           git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
 
-      - name: Tests de bout en bout (Apple Silicon)
+      - name: Tests de bout en bout (exécutable macOS)
         run: >
-          tools/watchdog.sh 1200 out/osx-arm64/pstbrowser-cli selftest
-          "$RUNNER_TEMP/selftest-arm64"
+          tools/watchdog.sh 1200 out/cli/pstbrowser-cli selftest
+          "$RUNNER_TEMP/selftest"
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
 
-      - name: Installer Rosetta 2
-        run: /usr/bin/pgrep -q oahd || sudo softwareupdate --install-rosetta --agree-to-license
-
-      - name: Tests de bout en bout (Intel, sous Rosetta)
-        run: >
-          tools/watchdog.sh 1200 arch -x86_64 out/osx-x64/pstbrowser-cli selftest
-          "$RUNNER_TEMP/selftest-x64"
-          "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
-          "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
-
-      - name: Mettre à disposition les exécutables de test
+      - name: Mettre à disposition l'exécutable de test
         uses: actions/upload-artifact@v5
         with:
-          name: pstbrowser-cli-macos
-          path: |
-            out/osx-arm64/pstbrowser-cli
-            out/osx-x64/pstbrowser-cli
+          name: pstbrowser-cli-${{ matrix.rid }}
+          path: out/cli/pstbrowser-cli
           retention-days: 14
 
   windows:

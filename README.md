@@ -122,6 +122,9 @@ shasum -a 256 -c SHA256SUMS.txt --ignore-missing
 ./pstbrowser-cli selftest-unit
 ```
 
+Sur un Mac Apple Silicon, utilisez la version `arm64` : la version Intel exécutée sous Rosetta 2 peut se bloquer
+(limite de l'émulation pour le moteur .NET).
+
 Sur macOS, l'exécutable est signé « ad hoc » mais pas notarié par Apple (cela demanderait un compte développeur
 payant) : s'il a été téléchargé avec un navigateur, macOS refuse de l'ouvrir. Après avoir vérifié l'empreinte,
 levez ce blocage une fois avec `xattr -d com.apple.quarantine pstbrowser-cli`. En parc géré (MDM), la DSI peut
@@ -176,7 +179,7 @@ dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r osx-arm64 
 ```
 
 La CI (`.github/workflows/build.yml`) compile et teste à chaque push sous Windows, Linux, macOS Apple Silicon et
-macOS Intel (sous Rosetta). `.github/workflows/release.yml` (onglet Actions, « Run workflow » avec la version, ou tag
+macOS Intel. `.github/workflows/release.yml` (onglet Actions, « Run workflow » avec la version, ou tag
 `vX.Y.Z`) teste à nouveau les exécutables de chaque plateforme, puis publie la release avec les empreintes SHA-256
 et une **attestation de provenance** signée (Sigstore) pour chaque fichier, vérifiable avec
 `gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser`. L'option « Essai à blanc » fait tout sauf la publication.
