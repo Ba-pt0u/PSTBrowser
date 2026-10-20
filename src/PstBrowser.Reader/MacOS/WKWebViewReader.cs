@@ -75,14 +75,15 @@ namespace PstBrowser.Reader.MacOS
         // ------------------------------------------------------------------ dead proxy (macOS 14+)
 
         [DllImport("/System/Library/Frameworks/Network.framework/Network")] private static extern IntPtr nw_endpoint_create_host(string host, string port);
-        [DllImport("/System/Library/Frameworks/Network.framework/Network")] private static extern IntPtr nw_proxy_config_create_http_connect(IntPtr endpoint, IntPtr tlsOptions);
+        [DllImport("/System/Library/Frameworks/Network.framework/Network")] private static extern IntPtr nw_proxy_config_create_socksv5(IntPtr endpoint);
         [DllImport("/System/Library/Frameworks/Network.framework/Network")] private static extern void nw_proxy_config_set_failover_allowed(IntPtr config, [MarshalAs(UnmanagedType.I1)] bool allowed);
 
         private void SetDeadProxy(IntPtr store)
         {
             if (!Responds(store, "setProxyConfigurations:")) { LastError = "proxy non disponible avant macOS 14"; return; }
             var endpoint = nw_endpoint_create_host(DeadProxyHost, DeadProxyPort.ToString());
-            var proxy = nw_proxy_config_create_http_connect(endpoint, IntPtr.Zero);
+            // SOCKS: every TCP connection goes through it (an HTTP CONNECT proxy may only be used for some of them)
+            var proxy = nw_proxy_config_create_socksv5(endpoint);
             // by default a failing proxy is bypassed (direct connection): never here
             nw_proxy_config_set_failover_allowed(proxy, false);
             Msg(store, "setProxyConfigurations:", Send(Class("NSArray"), Sel("arrayWithObject:"), proxy));
