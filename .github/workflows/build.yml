@@ -112,6 +112,11 @@ jobs:
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
 
+      - name: Lecteur sécurisé (WKWebView) — aucune requête réseau
+        run: |
+          dotnet build tests/PstBrowser.ReaderTest -c Release
+          tools/watchdog.sh 600 dotnet tests/PstBrowser.ReaderTest/bin/Release/net10.0/PstBrowser.ReaderTest.dll
+
       - name: Mettre à disposition l'exécutable de test
         uses: actions/upload-artifact@v5
         with:
