@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Secure display of e-mail bodies on macOS (WKWebView) and Linux (WebKitGTK), through the system web engines:
+       no browser engine is shipped with PST Browser. Windows keeps WebView2 (PstBrowser.App). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>PstBrowser.Reader</RootNamespace>
+    <AssemblyName>PstBrowser.Reader</AssemblyName>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+</Project>

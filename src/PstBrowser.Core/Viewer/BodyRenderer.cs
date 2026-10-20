@@ -24,8 +24,17 @@ namespace PstBrowser.Core.Viewer
         private static readonly Regex ActiveSingles = new Regex(@"<(script|iframe|object|embed|applet|frame|base|link|meta)\b[^>]*>", O);
         private static readonly Regex EventAttrs = new Regex(@"\son[a-z]+\s*=\s*(""[^""]*""|'[^']*'|[^\s>]+)", O);
         private static readonly Regex JsUrls = new Regex(@"(href|src|action)\s*=\s*([""']?)\s*(javascript|vbscript|data:text/html)[^""'\s>]*\2", O);
-        private static readonly Regex RemoteSrc = new Regex(@"\b(src|background)\s*=\s*([""'])\s*(https?:|//|file:|ftp:)[^""']*\2", O);
-        private static readonly Regex RemoteCssUrl = new Regex(@"url\(\s*([""']?)\s*(https?:|//|file:)[^)]*\)", O);
+        // attribute value pointing outside the message: "…", '…' or unquoted
+        private const string RemoteValue = @"(?:""\s*(?:https?:|//|\\\\|file:|ftp:)[^""]*""|'\s*(?:https?:|//|\\\\|file:|ftp:)[^']*'|(?:https?:|//|\\\\|file:|ftp:)[^\s>]*)";
+        private static readonly Regex RemoteSrc = new Regex(@"\b(src|background|poster|lowsrc|dynsrc|data)\s*=\s*" + RemoteValue, O);
+        private static readonly Regex Srcset = new Regex(@"\b(?:img)?srcset\s*=\s*(""[^""]*""|'[^']*'|[^\s>]+)", O);
+        private static readonly Regex Ping = new Regex(@"\sping\s*=\s*(""[^""]*""|'[^']*'|[^\s>]+)", O);
+        // href loads a resource in SVG (image, use, feImage…): only links (a, area) keep a remote href
+        private static readonly Regex TagWithHref = new Regex(@"<(?!a\b|area\b)([a-z][\w:-]*)\b[^>]*\bhref\s*=[^>]*>", O);
+        private static readonly Regex RemoteHref = new Regex(@"\b((?:xlink:)?href)\s*=\s*" + RemoteValue, O);
+        private static readonly Regex RemoteCssUrl = new Regex(@"url\(\s*([""']?)\s*(https?:|//|\\\\|file:)[^)]*\)", O);
+        private static readonly Regex RemoteCssImport = new Regex(@"@import\s+([""'])[^""']*\1", O);
+        private static readonly Regex CssImageSet = new Regex(@"(?:-webkit-)?image-set\([^)]*(?:https?:|//)[^)]*\)", O);
         private static readonly Regex CidRef = new Regex(@"cid:([^""'\s)>]+)", O);
         private static readonly Regex HeadOpen = new Regex(@"<head\b[^>]*>", O);
         private static readonly Regex HtmlOpen = new Regex(@"<html\b[^>]*>", O);
@@ -132,10 +141,19 @@ namespace PstBrowser.Core.Viewer
             s = JsUrls.Replace(s, "$1=\"#\"");
             bool blocked = false;
             s = RemoteSrc.Replace(s, mm => { blocked = true; return $"{mm.Groups[1].Value}=\"\" data-pl-blocked=\"1\""; });
+            s = Srcset.Replace(s, mm => { if (!IsRemote(mm.Groups[1].Value)) return mm.Value; blocked = true; return " data-pl-blocked=\"1\""; });
+            s = Ping.Replace(s, " ");
+            s = TagWithHref.Replace(s, tag => RemoteHref.Replace(tag.Value, mm => { blocked = true; return $"{mm.Groups[1].Value}=\"\""; }));
             s = RemoteCssUrl.Replace(s, mm => { blocked = true; return "url()"; });
+            s = RemoteCssImport.Replace(s, mm => { if (!IsRemote(mm.Value)) return mm.Value; blocked = true; return ""; });
+            s = CssImageSet.Replace(s, mm => { blocked = true; return "none"; });
             blockedRemote = blocked;
             return s;
         }
+
+        private static bool IsRemote(string value)
+            => value.Contains("http:", StringComparison.OrdinalIgnoreCase) || value.Contains("https:", StringComparison.OrdinalIgnoreCase)
+               || value.Contains("//", StringComparison.Ordinal) || value.Contains("file:", StringComparison.OrdinalIgnoreCase) || value.Contains(@"\\", StringComparison.Ordinal);
 
         private static string MapInlineImages(string html, IMailItem m, MessageRef mref, Dictionary<string, int> inlineImages)
         {

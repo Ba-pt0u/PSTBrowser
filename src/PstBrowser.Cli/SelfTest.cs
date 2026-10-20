@@ -137,6 +137,12 @@ namespace PstBrowser.Cli
                 var unsafeHtml = BodyRenderer.Sanitize("<img src=\"https://tracker.example/p.gif\"><script>alert(1)</script><a href=\"javascript:x()\" onclick=\"y()\">l</a><div style=\"background:url(http://x/y)\">", out bool blocked);
                 Check(blocked && !unsafeHtml.Contains("tracker.example") && !unsafeHtml.Contains("<script") && !unsafeHtml.Contains("onclick") &&
                       !unsafeHtml.Contains("javascript:") && !unsafeHtml.Contains("http://x"), "contenu actif et ressources distantes neutralisés");
+                var tricky = BodyRenderer.Sanitize("<img src=http://t1.example/a width=1><img SRC = '  https://t2.example/b'><img srcset=\"https://t3.example/c 1x\">" +
+                    "<video poster=\"https://t4.example/d\"></video><svg><image href=\"https://t5.example/e\"/><image xlink:href=\"//t6.example/f\"/></svg>" +
+                    "<style>@import \"https://t7.example/g\"; .x{background:image-set(\"https://t8.example/h\" 1x)}</style><a href=\"https://lien.example/\" ping=\"https://t9.example/i\">lien</a>" +
+                    "<img src=\"cid:logo\"><img src=\"data:image/gif;base64,R0lGOD\">", out _);
+                Check(!System.Text.RegularExpressions.Regex.IsMatch(tricky, @"t\d\.example") && tricky.Contains("https://lien.example/") && tricky.Contains("cid:logo") && tricky.Contains("data:image/gif"),
+                      "adresses distantes sans guillemets, srcset, poster, SVG, @import, image-set, ping : neutralisées ; liens, cid: et data: conservés");
 
                 Console.WriteLine("5. Gestion des sources");
                 var before = ws.GetCounts().total;
