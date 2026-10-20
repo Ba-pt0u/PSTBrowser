@@ -53,6 +53,9 @@ jobs:
           "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata"
           "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles"
 
+      - name: Compiler l'application macOS / Linux (Avalonia)
+        run: dotnet build src/PstBrowser.Desktop/PstBrowser.Desktop.csproj -c Release
+
       - name: Lecteur sécurisé (WebKitGTK) — aucune requête réseau
         run: |
           sudo apt-get update -q

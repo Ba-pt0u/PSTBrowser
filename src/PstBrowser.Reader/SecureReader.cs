@@ -81,12 +81,24 @@ namespace PstBrowser.Reader
         protected SecureReader(ReaderProtections protections) { Protections = protections; }
 
         /// <summary>Creates a reader whose view is not shown on screen (tests, rendering without a window).</summary>
-        public static SecureReader CreateOffscreen(ReaderProtections protections = ReaderProtections.All)
+        public static SecureReader CreateOffscreen(ReaderProtections protections = ReaderProtections.All) => Create(protections, embedded: false);
+
+        /// <summary>
+        /// Creates a reader whose view is embedded in a window of the application (<see cref="NativeHandle"/>). It is used
+        /// on the thread of the user interface, whose event loop runs the native events (GLib loop on Linux).
+        /// </summary>
+        public static SecureReader CreateEmbedded(ReaderProtections protections = ReaderProtections.All) => Create(protections, embedded: true);
+
+        private static SecureReader Create(ReaderProtections protections, bool embedded)
         {
-            if (OperatingSystem.IsLinux()) return new Linux.WebKitGtkReader(protections);
-            if (OperatingSystem.IsMacOS()) return new MacOS.WKWebViewReader(protections);
+            if (OperatingSystem.IsLinux()) return new Linux.WebKitGtkReader(protections, embedded);
+            if (OperatingSystem.IsMacOS()) return new MacOS.WKWebViewReader(protections, embedded);
             throw new PlatformNotSupportedException("Sous Windows, les messages sont affichés par WebView2 (application PST Browser).");
         }
+
+        /// <summary>Native view to embed: an X11 window ("XID", Linux) or an NSView ("NSView", macOS).</summary>
+        public abstract IntPtr NativeHandle { get; }
+        public abstract string NativeHandleKind { get; }
 
         /// <summary>Displays a document (the HTML produced by PstBrowser.Core, or any HTML).</summary>
         public void ShowHtml(string html)

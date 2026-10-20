@@ -22,18 +22,22 @@ namespace PstBrowser.Reader.MacOS
         private bool _loaded;
         private string _rulesDir;
 
-        /// <summary>The WKWebView (an NSView, to be embedded in a window by the application).</summary>
-        public IntPtr View => _view;
+        public override IntPtr NativeHandle => _view;
+        public override string NativeHandleKind => "NSView";
 
-        public WKWebViewReader(ReaderProtections protections = ReaderProtections.All) : base(protections)
+        /// <param name="embedded">The WKWebView is given to the application (NSView); otherwise it stays in a hidden window (tests).</param>
+        public WKWebViewReader(ReaderProtections protections = ReaderProtections.All, bool embedded = false) : base(protections)
         {
             NativeLibrary.Load("/System/Library/Frameworks/AppKit.framework/AppKit");
             NativeLibrary.Load("/System/Library/Frameworks/WebKit.framework/WebKit");
             var pool = objc_autoreleasePoolPush();
             try
             {
-                var app = Msg(Class("NSApplication"), "sharedApplication");
-                SendVoid(app, Sel("setActivationPolicy:"), 2L); // prohibited: no Dock icon for a hidden view
+                if (!embedded)
+                {
+                    var app = Msg(Class("NSApplication"), "sharedApplication");
+                    SendVoid(app, Sel("setActivationPolicy:"), 2L); // prohibited: no Dock icon for a hidden view
+                }
 
                 _delegate = New(DefineDelegateClass());
                 Instances[_delegate] = this;
@@ -50,10 +54,13 @@ namespace PstBrowser.Reader.MacOS
                 _view = Send(Msg(Class("WKWebView"), "alloc"), Sel("initWithFrame:configuration:"), new CGRect(0, 0, 900, 700), _config);
                 Msg(_view, "setNavigationDelegate:", _delegate);
                 Msg(_view, "setUIDelegate:", _delegate);
-                // a window that is never shown: the page is laid out and loaded as in the application
-                _window = Send(Msg(Class("NSWindow"), "alloc"), Sel("initWithContentRect:styleMask:backing:defer:"),
-                    new CGRect(0, 0, 900, 700), 0UL, 2UL, false);
-                Msg(_window, "setContentView:", _view);
+                if (!embedded)
+                {
+                    // a window that is never shown: the page is laid out and loaded as in the application
+                    _window = Send(Msg(Class("NSWindow"), "alloc"), Sel("initWithContentRect:styleMask:backing:defer:"),
+                        new CGRect(0, 0, 900, 700), 0UL, 2UL, false);
+                    Msg(_window, "setContentView:", _view);
+                }
             }
             finally { objc_autoreleasePoolPop(pool); }
         }
@@ -171,8 +178,12 @@ namespace PstBrowser.Reader.MacOS
                 Msg(_view, "stopLoading");
                 Msg(_view, "setNavigationDelegate:", IntPtr.Zero);
                 Msg(_view, "setUIDelegate:", IntPtr.Zero);
-                Msg(_window, "setContentView:", IntPtr.Zero);
-                Msg(_window, "close");
+                if (_window != IntPtr.Zero)
+                {
+                    Msg(_window, "setContentView:", IntPtr.Zero);
+                    Msg(_window, "close");
+                }
+                else Msg(_view, "removeFromSuperview");
                 foreach (var o in new[] { _view, _config, _ruleList }) if (o != IntPtr.Zero) Msg(o, "release");
             }
             finally { objc_autoreleasePoolPop(pool); }

@@ -1,0 +1,110 @@
+name: UI smoke test (macOS / Linux)
+# Lance l'application macOS / Linux (Avalonia) sur un dossier d'affaire de test, la pilote (PstBrowser --ui-smoke)
+# et publie les captures d'écran sur la branche « ci-screenshots-desktop ». Uniquement avec des fichiers de test publics.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/ui-smoke-desktop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-smoke-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  smoke:
+    name: Interface (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, runner: ubuntu-latest, label: Linux }
+          - { os: macos-arm64, runner: macos-latest, label: macOS Apple Silicon }
+          - { os: macos-x64, runner: macos-15-intel, label: macOS Intel }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Dépendances (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libwebkit2gtk-4.1-0 xvfb xauth imagemagick
+
+      - name: Compiler SQLite
+        run: |
+          if [ "$(uname)" = Darwin ]; then native/build-sqlite-macos.sh; else native/build-sqlite-linux.sh; fi
+
+      - name: Compiler l'application et l'outil en ligne de commande
+        run: |
+          dotnet build src/PstBrowser.Desktop/PstBrowser.Desktop.csproj -c Release
+          dotnet build src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release
+
+      - name: Préparer un dossier d'affaire de test
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+          mkdir -p "$RUNNER_TEMP/src/msg"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/enron.pst" "$RUNNER_TEMP/src/michelle.lokay@enron.com.pst"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/mtnman1965@outlook.com.ost" "$RUNNER_TEMP/src/"
+          cp "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles/"*.msg "$RUNNER_TEMP/src/msg/"
+          cli="dotnet src/PstBrowser.Cli/bin/Release/net10.0/pstbrowser-cli.dll"
+          $cli add "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/src"
+          $cli index "$RUNNER_TEMP/affaire"
+
+      - name: Test de l'interface
+        run: |
+          app=src/PstBrowser.Desktop/bin/Release/net10.0/PstBrowser
+          if [ "$(uname)" = Darwin ]; then
+            tools/watchdog.sh 900 tests/ui-smoke-desktop.sh "$app" "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/shots" tahoe
+          else
+            tools/watchdog.sh 900 xvfb-run -a -s "-screen 0 1440x900x24" tests/ui-smoke-desktop.sh "$app" "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/shots" tahoe
+          fi
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: shots-${{ matrix.os }}
+          path: ${{ runner.temp }}/shots
+          retention-days: 7
+
+  screenshots:
+    name: Publication des captures
+    needs: smoke
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: shots-*
+          path: shots
+
+      - name: Publier les captures sur la branche ci-screenshots-desktop
+        run: |
+          [ -d shots ] || exit 0
+          cd shots
+          for d in shots-*; do [ -d "$d" ] && mv "$d" "${d#shots-}"; done
+          git init -q -b ci-screenshots-desktop
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          echo "Captures du test d'interface macOS / Linux — commit ${GITHUB_SHA}" > README.md
+          git add -A
+          git commit -q -m "UI smoke test (macOS / Linux) ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots-desktop

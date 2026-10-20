@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:PstBrowser.Desktop.Controls"
+             x:Class="PstBrowser.Desktop.Controls.MessageViewer"
+             Background="White">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Margin" Value="0,2,10,2"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+        </Style>
+        <Style Selector="SelectableTextBlock.value">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="MaxLines" Value="4"/>
+        </Style>
+    </UserControl.Styles>
+    <Panel>
+        <DockPanel x:Name="Body" IsVisible="False">
+            <Border DockPanel.Dock="Top" Padding="14,10,14,8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                <StackPanel>
+                    <WrapPanel Margin="0,0,0,8">
+                        <Button x:Name="BtnBack" Classes="tool" Content="← Message parent" Click="Back_Click" IsVisible="False" ToolTip.Tip="Revenir au message qui contient ce message joint"/>
+                        <Button Classes="tool" Content="En-têtes" Click="Headers_Click" ToolTip.Tip="Afficher les en-têtes Internet et les propriétés techniques"/>
+                        <Button x:Name="BtnAnalysis" Classes="tool" Content="Analyse" Click="Analysis_Click"
+                                ToolTip.Tip="Chemin des serveurs, SPF / DKIM / DMARC, indices d'usurpation, dates, données sensibles, fil de conversation"/>
+                        <Button x:Name="BtnThread" Classes="tool" Content="Fil" Click="Thread_Click" IsVisible="False" ToolTip.Tip="Afficher tous les messages de ce fil de conversation"/>
+                        <Button Classes="tool" Content="Exporter .eml" Click="ExportEml_Click" ToolTip.Tip="Enregistrer ce message au format .eml (lisible par tout logiciel de messagerie)"/>
+                        <Button x:Name="BtnPopOut" Classes="tool" Content="Nouvelle fenêtre" Click="PopOut_Click"/>
+                    </WrapPanel>
+                    <SelectableTextBlock x:Name="TxtSubject" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Classes="label" Text="De" x:Name="LblFrom"/>
+                        <SelectableTextBlock Grid.Row="0" Grid.Column="1" Classes="value" x:Name="TxtFrom" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="1" Classes="label" Text="À" x:Name="LblTo"/>
+                        <SelectableTextBlock Grid.Row="1" Grid.Column="1" Classes="value" x:Name="TxtTo"/>
+                        <TextBlock Grid.Row="2" Classes="label" Text="Cc" x:Name="LblCc"/>
+                        <SelectableTextBlock Grid.Row="2" Grid.Column="1" Classes="value" x:Name="TxtCc"/>
+                        <TextBlock Grid.Row="3" Classes="label" Text="Cci" x:Name="LblBcc"/>
+                        <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="value" x:Name="TxtBcc"/>
+                        <TextBlock Grid.Row="4" Classes="label" Text="Date"/>
+                        <SelectableTextBlock Grid.Row="4" Grid.Column="1" Classes="value" x:Name="TxtDate"/>
+                    </Grid>
+                    <TextBlock x:Name="TxtLocation" Classes="muted" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                    <Border x:Name="AlertBar" IsVisible="False" Background="#FFF4CE" BorderBrush="#E0B100" BorderThickness="1" CornerRadius="3" Padding="8,4" Margin="0,6,0,0">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Classes="link" Content="Détails…" Click="Analysis_Click" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtAlert" TextWrapping="Wrap" FontSize="12" AutomationProperties.Name="Alertes d'analyse"/>
+                        </DockPanel>
+                    </Border>
+                    <DockPanel x:Name="AttachmentsBar" Margin="0,8,0,0" IsVisible="False">
+                        <Button DockPanel.Dock="Right" Classes="link" Content="Tout enregistrer…" VerticalAlignment="Top" Margin="8,4,0,0" Click="SaveAll_Click"/>
+                        <WrapPanel x:Name="AttachmentsList"/>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+            <Panel>
+                <c:SecureMessageView x:Name="Web"/>
+                <TextBlock x:Name="TxtWebError" IsVisible="False" TextWrapping="Wrap" Margin="20" Foreground="#A33"/>
+            </Panel>
+        </DockPanel>
+        <TextBlock x:Name="TxtPlaceholder" Text="Sélectionnez un message pour l'afficher" Classes="muted"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" Margin="20" TextAlignment="Center"/>
+    </Panel>
+</UserControl>

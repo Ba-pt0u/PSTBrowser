@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:w="using:PstBrowser.Desktop.Windows"
+        x:Class="PstBrowser.Desktop.Windows.ColumnsWindow"
+        Title="Colonnes de la liste des messages" Width="480" Height="580" MinWidth="380" MinHeight="380"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Classes="muted" Margin="0,0,0,8"
+                   Text="Cochez les colonnes à afficher. L'ordre se règle ici (Monter / Descendre) ou en faisant glisser un en-tête de colonne dans la liste. Les largeurs se règlent en tirant le bord d'un en-tête. Ces préférences sont propres à votre session."/>
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button Classes="tool" Content="Vue Standard" Click="Preset_Click" Tag="Standard" ToolTip.Tip="Date, expéditeur, objet, boîte, dossier, taille"/>
+            <Button Classes="tool" Content="Vue Investigation" Click="Preset_Click" Tag="Investigation"
+                    ToolTip.Tip="Dates de réception et d'envoi, adresses, À/Cc/Cci, chemin du dossier, fichier source, pièces jointes, Message-ID…"/>
+            <Button Classes="tool" Content="Réinitialiser" Click="Reset_Click" ToolTip.Tip="Revient à la vue Standard avec les largeurs par défaut"/>
+        </WrapPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0" Spacing="6">
+            <Button Classes="accent" Content="OK" Width="80" IsDefault="True" Click="Ok_Click" HorizontalContentAlignment="Center"/>
+            <Button Classes="tool" Content="Annuler" Width="80" IsCancel="True" Click="Cancel_Click" Margin="0" HorizontalContentAlignment="Center"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Top" Spacing="6">
+            <Button Classes="tool" Content="Monter" Click="Up_Click" Margin="0"/>
+            <Button Classes="tool" Content="Descendre" Click="Down_Click" Margin="0"/>
+        </StackPanel>
+        <ListBox x:Name="ColumnList" SelectionMode="Single" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="w:ColumnsWindow+Item">
+                    <CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding Title}"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>

@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:w="using:PstBrowser.Desktop.Windows"
+        x:Class="PstBrowser.Desktop.Windows.SourcesWindow"
+        Title="Sources du dossier d'affaire" Width="1000" Height="560" MinWidth="680" MinHeight="340"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Classes="muted" Margin="0,0,0,8"
+                   Text="Les fichiers sources sont ouverts en lecture seule et ne sont jamais modifiés. Les parties d'une même boîte (export découpé) doivent avoir le même nom de boîte : elles sont alors fusionnées dans l'arborescence. Double-cliquez sur la colonne « Boîte » pour la modifier."/>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <WrapPanel Margin="0,0,0,8">
+                <TextBlock Text="Indexations simultanées :" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="CmbParallel" Width="70" SelectionChanged="Options_Changed">
+                    <ComboBoxItem Content="1"/>
+                    <ComboBoxItem Content="2"/>
+                    <ComboBoxItem Content="3"/>
+                    <ComboBoxItem Content="4"/>
+                </ComboBox>
+                <TextBlock Text="(1 sur disque dur, 2 à 4 sur SSD)" Classes="muted" VerticalAlignment="Center" Margin="6,0,20,0"/>
+                <CheckBox x:Name="ChkSha" Content="Calculer l'empreinte SHA-256 des fichiers (traçabilité)" VerticalAlignment="Center" Click="Options_Changed"/>
+            </WrapPanel>
+            <StackPanel Margin="0,0,0,8">
+                <CheckBox x:Name="ChkAttachments" Click="Options_Changed"
+                          Content="Indexer le contenu des pièces jointes (PDF, Word, Excel, PowerPoint, OpenDocument, archives ZIP, texte…)"
+                          ToolTip.Tip="Étape supplémentaire après l'indexation des messages : le texte des pièces jointes devient recherchable (pjtexte:) et l'empreinte SHA-256 de chaque pièce jointe est calculée. Elle s'exécute dans un processus séparé protégé par un délai maximal par fichier."/>
+                <TextBlock Classes="muted" FontSize="11" Margin="28,2,0,0" TextWrapping="Wrap"
+                           Text="Les fichiers de plus de 50 Mo, chiffrés ou d'un format non pris en charge sont signalés dans l'index mais leur contenu n'est pas lu. Les images scannées ne sont pas reconnues (pas d'OCR). Désactiver cette option accélère l'indexation."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnRelocate" Classes="tool" Content="Retrouver…" Click="Relocate_Click"
+                        ToolTip.Tip="Source déplacée (autre disque, autre poste, Windows, Mac, Linux) : indiquez son nouvel emplacement. Les autres sources déplacées avec elle sont retrouvées en même temps."/>
+                <Button Classes="tool" Content="Réindexer" Click="Reindex_Click" ToolTip.Tip="Supprime l'index de la source sélectionnée et la réindexe entièrement"/>
+                <Button Classes="tool" Content="Retirer du dossier" Click="Remove_Click" ToolTip.Tip="Retire la source de l'index (le fichier n'est pas supprimé)"/>
+                <Button Classes="tool" Content="Copier la liste" Click="Copy_Click"/>
+                <Button Classes="tool" Content="Fermer" IsCancel="True" Click="Close_Click" Margin="0"/>
+            </StackPanel>
+        </StackPanel>
+        <DataGrid x:Name="SourcesGrid" SelectionMode="Extended" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CellEditEnded="Grid_CellEditEnded">
+            <DataGrid.Styles>
+                <Style Selector="DataGridRow" x:DataType="w:SourcesWindow+Row">
+                    <Setter Property="Foreground" Value="{Binding RowForeground}"/>
+                </Style>
+            </DataGrid.Styles>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Boîte" Binding="{Binding MailboxName}" x:DataType="w:SourcesWindow+Row" Width="200"/>
+                <DataGridTextColumn Header="Fichier / dossier" Binding="{Binding DisplayName}" x:DataType="w:SourcesWindow+Row" IsReadOnly="True" Width="210"/>
+                <DataGridTextColumn Header="Taille" Binding="{Binding SizeText}" x:DataType="w:SourcesWindow+Row" IsReadOnly="True" Width="80"/>
+                <DataGridTextColumn Header="État" Binding="{Binding StatusText}" x:DataType="w:SourcesWindow+Row" IsReadOnly="True" Width="110"/>
+                <DataGridTextColumn Header="Éléments" Binding="{Binding CountText}" x:DataType="w:SourcesWindow+Row" IsReadOnly="True" Width="120"/>
+                <DataGridTextColumn Header="SHA-256" Binding="{Binding Sha256}" x:DataType="w:SourcesWindow+Row" IsReadOnly="True" Width="120"/>
+                <DataGridTextColumn Header="Chemin" Binding="{Binding Path}" x:DataType="w:SourcesWindow+Row" IsReadOnly="True" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

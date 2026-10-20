@@ -19,11 +19,19 @@ namespace PstBrowser.Reader.Linux
         private bool _loaded, _filterDone;
         private string _filterDir;
 
-        /// <summary>The WebKitWebView widget (to be embedded in a window by the application).</summary>
-        public IntPtr Widget => _view;
+        private nuint _xid;
 
-        public WebKitGtkReader(ReaderProtections protections = ReaderProtections.All) : base(protections)
+        public override IntPtr NativeHandle => (IntPtr)_xid;
+        public override string NativeHandleKind => "XID";
+
+        /// <param name="embedded">
+        /// The view is put in a GtkPlug: an X11 window that the application reparents into its own window (XEmbed).
+        /// Otherwise it stays in an off-screen window (tests).
+        /// </param>
+        public WebKitGtkReader(ReaderProtections protections = ReaderProtections.All, bool embedded = false) : base(protections)
         {
+            // the application windows are X11 ones (Avalonia, XWayland under Wayland): GTK must use X11 too
+            if (embedded) setenv("GDK_BACKEND", "x11", 1);
             if (gtk_init_check(IntPtr.Zero, IntPtr.Zero) == 0)
                 throw new InvalidOperationException("GTK ne peut pas s'initialiser (aucun affichage disponible).");
             _self = GCHandle.Alloc(this);
@@ -60,10 +68,20 @@ namespace PstBrowser.Reader.Linux
             Connect("permission-request", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, int>)&OnPermission, me);
             Connect("resource-load-started", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, void>)&OnResourceLoad, me);
 
-            _window = gtk_offscreen_window_new();
-            gtk_widget_set_size_request(_view, 900, 700);
-            gtk_container_add(_window, _view);
-            gtk_widget_show_all(_window);
+            if (embedded)
+            {
+                _window = gtk_plug_new(0);
+                gtk_container_add(_window, _view);
+                gtk_widget_show_all(_window);
+                _xid = gtk_plug_get_id(_window);
+            }
+            else
+            {
+                _window = gtk_offscreen_window_new();
+                gtk_widget_set_size_request(_view, 900, 700);
+                gtk_container_add(_window, _view);
+                gtk_widget_show_all(_window);
+            }
         }
 
         private void Connect(string signal, IntPtr handler, IntPtr me) => g_signal_connect_data(_view, signal, handler, me, IntPtr.Zero, 0);

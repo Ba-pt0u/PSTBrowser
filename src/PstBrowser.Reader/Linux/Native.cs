@@ -30,6 +30,9 @@ namespace PstBrowser.Reader.Linux
         // ---- GTK
         [DllImport(Gtk)] public static extern int gtk_init_check(IntPtr argc, IntPtr argv);
         [DllImport(Gtk)] public static extern IntPtr gtk_offscreen_window_new();
+        [DllImport(Gtk)] public static extern IntPtr gtk_plug_new(nuint socketId);
+        [DllImport(Gtk)] public static extern nuint gtk_plug_get_id(IntPtr plug);
+        [DllImport("libc", EntryPoint = "setenv")] public static extern int setenv(string name, string value, int overwrite);
         [DllImport(Gtk)] public static extern void gtk_container_add(IntPtr container, IntPtr widget);
         [DllImport(Gtk)] public static extern void gtk_widget_set_size_request(IntPtr widget, int width, int height);
         [DllImport(Gtk)] public static extern void gtk_widget_show_all(IntPtr widget);

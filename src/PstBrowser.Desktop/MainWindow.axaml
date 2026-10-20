@@ -1,0 +1,183 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:PstBrowser.Desktop.Controls"
+        xmlns:local="using:PstBrowser.Desktop"
+        x:Class="PstBrowser.Desktop.MainWindow"
+        Title="PST Browser" Width="1400" Height="860" MinWidth="900" MinHeight="500"
+        WindowStartupLocation="CenterScreen" Icon="/Assets/app.ico"
+        DragDrop.AllowDrop="True" FontSize="13">
+
+    <DockPanel>
+        <!-- ===================== toolbar ===================== -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,7">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <Button x:Name="BtnCsv" Classes="tool" Content="Export CSV" Click="ExportCsv_Click" IsEnabled="False"
+                            ToolTip.Tip="Exporte tous les résultats de la recherche courante dans un fichier CSV (Excel, LibreOffice, Numbers)"/>
+                    <Button x:Name="BtnEmlSel" Classes="tool" Content="Export .eml" Click="ExportEmlSelection_Click" IsEnabled="False"
+                            ToolTip.Tip="Enregistre les messages sélectionnés dans un dossier, au format .eml"/>
+                    <Button x:Name="BtnLayout" Classes="tool" Content="Lecture en bas" Click="Layout_Click"
+                            ToolTip.Tip="Afficher le volet de lecture à droite de la liste ou en dessous"/>
+                    <Button Classes="tool" Content="?" Click="Help_Click" ToolTip.Tip="Aide" Margin="0" Width="32"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BtnCase" Classes="tool" Click="BtnCase_Click" ToolTip.Tip="Créer, ouvrir ou changer de dossier d'affaire">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📁 "/>
+                            <TextBlock x:Name="TxtCaseName" Text="Dossier d'affaire" FontWeight="SemiBold"/>
+                            <TextBlock Text="  ▾"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="BtnAddFiles" Classes="tool" Content="＋ Fichiers PST / MSG" Click="AddFiles_Click" IsEnabled="False"
+                            ToolTip.Tip="Ajouter des fichiers PST, OST ou MSG (glisser-déposer possible)"/>
+                    <Button x:Name="BtnAddFolder" Classes="tool" Content="＋ Dossier" Click="AddFolder_Click" IsEnabled="False"
+                            ToolTip.Tip="Ajoute tous les fichiers PST/OST du dossier et de ses sous-dossiers, et les fichiers MSG qu'il contient"/>
+                    <Button x:Name="BtnSources" Classes="tool" Content="Sources…" Click="Sources_Click" IsEnabled="False"
+                            ToolTip.Tip="Liste des fichiers du dossier d'affaire, regroupement par boîte, options d'indexation"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ===================== search bar ===================== -->
+        <Border x:Name="SearchBar" DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,8" IsEnabled="False">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBox x:Name="TxtQuery" FontSize="14" KeyDown="TxtQuery_KeyDown" MinWidth="250"
+                         Watermark="Rechercher dans tous les messages et leurs pièces jointes : mots, &quot;expression exacte&quot;, de:dupont, pjtexte:avenant…"
+                         ToolTip.Tip="Mots (tous requis), &quot;expression exacte&quot;, mot*, a OR b, -exclu, de: à: objet: corps: pj: pjtexte: indice: spf: fil: avant:2024-01-31 apres:2023-01-01"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" Spacing="6">
+                    <ComboBox x:Name="CmbScope" Width="200" SelectedIndex="0" ToolTip.Tip="Où chercher" VerticalAlignment="Center">
+                        <ComboBoxItem Content="Partout (toutes les boîtes)"/>
+                        <ComboBoxItem Content="Boîte sélectionnée"/>
+                        <ComboBoxItem Content="Dossier sélectionné"/>
+                    </ComboBox>
+                    <TextBlock Text="du" Classes="muted" VerticalAlignment="Center"/>
+                    <CalendarDatePicker x:Name="DateFrom" Width="130" Watermark="jj/mm/aaaa" VerticalAlignment="Center"/>
+                    <TextBlock Text="au" Classes="muted" VerticalAlignment="Center"/>
+                    <CalendarDatePicker x:Name="DateTo" Width="130" Watermark="jj/mm/aaaa" VerticalAlignment="Center"/>
+                    <CheckBox x:Name="ChkAtt" Content="Avec PJ" VerticalAlignment="Center"/>
+                    <CheckBox x:Name="ChkDedup" Content="Sans doublons" IsChecked="True" VerticalAlignment="Center"
+                              ToolTip.Tip="Masque les copies d'un même message (même Message-ID) dans une même boîte, fréquentes dans les exports découpés"/>
+                    <Button Classes="accent" Content="Rechercher" Click="Search_Click" VerticalAlignment="Center"/>
+                    <Button Classes="tool" Content="Effacer" Click="ClearSearch_Click" Margin="0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===================== status bar ===================== -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,4">
+            <DockPanel>
+                <StackPanel x:Name="IndexPanel" Orientation="Horizontal" DockPanel.Dock="Right" IsVisible="False" Spacing="8">
+                    <ProgressBar x:Name="IndexProgress" Width="220" Height="12" VerticalAlignment="Center"/>
+                    <Button x:Name="BtnPause" Classes="link" Content="Pause" Click="Pause_Click" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock x:Name="TxtStatus" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ===================== main area ===================== -->
+        <Panel>
+            <Grid x:Name="MainArea" IsVisible="False" ColumnDefinitions="260,5,*">
+                <!-- folder tree -->
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="10,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <CheckBox x:Name="ChkHideEmpty" DockPanel.Dock="Right" Content="Masquer vides" FontSize="11" Click="HideEmpty_Click"/>
+                            <TextBlock Text="Boîtes et dossiers" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+                    <TreeView x:Name="Tree" SelectionChanged="Tree_SelectionChanged" Padding="2,4">
+                        <TreeView.Styles>
+                            <Style Selector="TreeViewItem" x:DataType="local:TreeNode">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                <Setter Property="MinHeight" Value="26"/>
+                            </Style>
+                        </TreeView.Styles>
+                        <TreeView.ItemTemplate>
+                            <TreeDataTemplate x:DataType="local:TreeNode" ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"/>
+                                    <TextBlock Text="{Binding Name}" FontWeight="{Binding Weight}"/>
+                                    <TextBlock Text="{Binding CountText}" Classes="muted" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </TreeDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="1" Background="{StaticResource PanelBrush}" ResizeDirection="Columns"/>
+
+                <!-- message list + reading pane (right or bottom, arranged by ApplyReaderLayout) -->
+                <Grid x:Name="ContentGrid" Grid.Column="2">
+                    <DockPanel x:Name="ListPanel">
+                        <Border DockPanel.Dock="Top" Padding="10,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                            <DockPanel>
+                                <ComboBox x:Name="CmbSort" DockPanel.Dock="Right" Width="210" SelectionChanged="CmbSort_SelectionChanged" Margin="10,0,0,0"
+                                          ToolTip.Tip="Ordre de tri (cliquer sur un en-tête de colonne fonctionne aussi)"/>
+                                <Button x:Name="BtnColumns" DockPanel.Dock="Right" Classes="tool" Content="Colonnes…" Margin="10,0,0,0" Padding="8,2"
+                                        Click="Columns_Click" ToolTip.Tip="Choisir les colonnes de la liste et leur ordre"/>
+                                <Button x:Name="BtnMore" DockPanel.Dock="Right" Classes="link" Content="Afficher plus" Click="More_Click" IsVisible="False" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TxtResults" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+                        <DataGrid x:Name="MessageList" IsReadOnly="True" SelectionMode="Extended" HeadersVisibility="Column"
+                                  GridLinesVisibility="None" CanUserReorderColumns="True" CanUserResizeColumns="True" CanUserSortColumns="True"
+                                  Sorting="List_Sorting" ColumnReordered="List_ColumnReordered" SelectionChanged="List_SelectionChanged"
+                                  DoubleTapped="List_DoubleTapped" KeyDown="List_KeyDown" FontSize="13">
+                            <DataGrid.Styles>
+                                <Style Selector="DataGridRow" x:DataType="local:RowItem">
+                                    <Setter Property="FontWeight" Value="{Binding RowWeight}"/>
+                                    <Setter Property="Foreground" Value="{Binding RowForeground}"/>
+                                    <Setter Property="FontStyle" Value="{Binding RowStyle}"/>
+                                    <Setter Property="ToolTip.Tip" Value="{Binding TooltipText}"/>
+                                </Style>
+                                <Style Selector="DataGridCell">
+                                    <Setter Property="Padding" Value="4,2"/>
+                                    <Setter Property="MinHeight" Value="24"/>
+                                </Style>
+                                <Style Selector="DataGridCell TextBlock">
+                                    <Setter Property="Margin" Value="2,0"/>
+                                </Style>
+                                <Style Selector="DataGridColumnHeader">
+                                    <Setter Property="FontSize" Value="12"/>
+                                    <Setter Property="Padding" Value="6,4"/>
+                                </Style>
+                            </DataGrid.Styles>
+                            <DataGrid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Ouvrir dans une nouvelle fenêtre" Click="OpenInWindow_Click"/>
+                                    <MenuItem Header="Afficher le dossier du message" Click="ShowFolder_Click"/>
+                                    <MenuItem Header="Analyse du message (en-têtes, dates, données sensibles)…" Click="AnalyseRow_Click"/>
+                                    <MenuItem Header="Afficher le fil de conversation" Click="ShowThreadRow_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="Exporter la sélection (.eml)…" Click="ExportEmlSelection_Click"/>
+                                    <MenuItem Header="Copier (date, expéditeur, objet)" Click="CopyRows_Click"/>
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
+                        </DataGrid>
+                    </DockPanel>
+
+                    <GridSplitter x:Name="ReaderSplitter" Background="{StaticResource PanelBrush}"/>
+
+                    <!-- reading pane -->
+                    <c:MessageViewer x:Name="Viewer"/>
+                </Grid>
+            </Grid>
+
+            <!-- ===================== welcome screen ===================== -->
+            <Panel x:Name="Welcome" Background="White">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="640">
+                    <TextBlock Text="PST Browser" FontSize="30" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                    <TextBlock Text="Consultation hors ligne de fichiers PST, OST et MSG (exports eDiscovery)" FontSize="15" Margin="0,4,0,22" Classes="muted"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,18" LineHeight="20"
+                               Text="Commencez par créer un dossier d'affaire : c'est un dossier (de préférence chiffré : FileVault, LUKS…) qui contiendra l'index de recherche. Ajoutez-y ensuite vos fichiers PST ou MSG : ils restent à leur emplacement, sont ouverts en lecture seule et ne sont jamais modifiés. Aucune donnée ne quitte ce poste."/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,18" Spacing="10">
+                        <Button Classes="accent" Content="Nouveau dossier d'affaire…" Padding="16,8" Click="NewCase_Click"/>
+                        <Button Classes="tool" Content="Ouvrir un dossier d'affaire…" Padding="16,8" Click="OpenCase_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="RecentTitle" Text="Récents" FontWeight="SemiBold" Margin="0,6,0,4" IsVisible="False"/>
+                    <StackPanel x:Name="RecentList"/>
+                </StackPanel>
+            </Panel>
+        </Panel>
+    </DockPanel>
+</Window>

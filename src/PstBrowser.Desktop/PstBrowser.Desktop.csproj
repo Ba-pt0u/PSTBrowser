@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PST Browser for macOS and Linux (Avalonia). Windows keeps PstBrowser.App (WPF + WebView2). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>PstBrowser</AssemblyName>
+    <RootNamespace>PstBrowser.Desktop</RootNamespace>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Product>PST Browser</Product>
+    <Description>Visualiseur hors ligne de fichiers PST, OST et MSG (exports eDiscovery)</Description>
+    <Version>1.3.0</Version>
+    <SatelliteResourceLanguages>fr</SatelliteResourceLanguages>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <!-- Single-file, self-contained publish -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PstBrowser.Core\PstBrowser.Core.csproj" />
+    <ProjectReference Include="..\PstBrowser.Reader\PstBrowser.Reader.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <!-- Native SQLite built from native/sqlite: the library of the target platform only -->
+  <PropertyGroup>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</SqliteNativeTarget>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx</SqliteNativeTarget>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux</SqliteNativeTarget>
+    <SqliteNativeTarget Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win</SqliteNativeTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\native\bin\linux-x64\libe_sqlite3.so" Link="libe_sqlite3.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="$(SqliteNativeTarget.StartsWith('linux')) and Exists('..\..\native\bin\linux-x64\libe_sqlite3.so')" />
+    <None Include="..\..\native\bin\osx\libe_sqlite3.dylib" Link="libe_sqlite3.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="$(SqliteNativeTarget.StartsWith('osx')) and Exists('..\..\native\bin\osx\libe_sqlite3.dylib')" />
+    <None Include="..\..\native\bin\win-x64\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="$(SqliteNativeTarget.StartsWith('win')) and Exists('..\..\native\bin\win-x64\e_sqlite3.dll')" />
+  </ItemGroup>
+
+</Project>
