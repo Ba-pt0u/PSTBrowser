@@ -13,7 +13,7 @@ namespace PstBrowser.ReaderTest
 {
     /// <summary>
     /// "Zero network request" test of the secure reader (macOS: WKWebView, Linux: WebKitGTK).
-    /// A canary server on the loopback address records every connection. A hostile message references it in every way
+    /// A canary server records every connection. A hostile message references it in every way
     /// a web page can load something (images, CSS, fonts, frames, media, SVG, prefetch, redirection, scripts, forms…).
     ///  - control: an unprotected view must reach the canary (otherwise the test proves nothing);
     ///  - the hardened view alone, the sanitizer alone, then both together must not reach it at all;
@@ -27,10 +27,10 @@ namespace PstBrowser.ReaderTest
         {
             Console.OutputEncoding = Encoding.UTF8;
             using var canary = new Canary();
-            string hostile = HostileMessage($"http://127.0.0.1:{canary.Port}");
+            string hostile = HostileMessage($"http://{canary.Address}:{canary.Port}");
             // PstBrowser.Core maps cid: images to its own address after sanitizing the body
             const string Inline = "https://pstbrowser.invalid/inline/logo";
-            Console.WriteLine($"Lecteur sécurisé ({Environment.OSVersion}) — serveur témoin sur 127.0.0.1:{canary.Port}");
+            Console.WriteLine($"Lecteur sécurisé ({Environment.OSVersion}) — serveur témoin sur {canary.Address}:{canary.Port}");
 
             // the document as PstBrowser.Core produces it: sanitized body + strict Content-Security-Policy
             string sanitized = BodyRenderer.Sanitize(hostile, out bool blockedRemote).Replace("cid:logo", Inline);
@@ -78,7 +78,7 @@ namespace PstBrowser.ReaderTest
                 reader.ShowHtml("<!DOCTYPE html><html><body><p>Message</p></body></html>");
                 reader.WaitForLoad(TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200));
                 canary.Clear();
-                reader.Navigate($"http://127.0.0.1:{canary.Port}/v/navigation");
+                reader.Navigate($"http://{canary.Address}:{canary.Port}/v/navigation");
                 reader.Pump(TimeSpan.FromSeconds(2));
                 Check(canary.Hits.Count == 0 && reader.RefusedNavigations.Any(u => u.Contains("/v/navigation")), "navigation refusée, aucune requête");
                 Check(clicked == null, "une navigation qui ne vient pas d'un clic n'est pas proposée à l'utilisateur");
@@ -139,7 +139,7 @@ body {{ background-image: url(""{h}/v/css-background""); font-family: X; }}
 <img src=""{h}/v/img"" width=""10"" height=""10"">
 <img src={h}/v/img-unquoted width=10 height=10>
 <img SRC = '  {h}/v/img-spaces' width=""10"" height=""10"">
-<img src=""//127.0.0.1:{h.Substring(h.LastIndexOf(':') + 1)}/v/protocol-relative"" width=""10"" height=""10"">
+<img src=""{h.Substring(h.IndexOf(':') + 1)}/v/protocol-relative"" width=""10"" height=""10"">
 <div class=""e"">x</div><div class=""f"">x</div>
 <img src=""relative.png"" width=""10"" height=""10"">
 <img srcset=""{h}/v/srcset 1x, {h}/v/srcset-2x 2x"" width=""10"" height=""10"">
@@ -169,15 +169,31 @@ body {{ background-image: url(""{h}/v/css-background""); font-family: X; }}
         /// <summary>1×1 PNG.</summary>
         private static readonly byte[] Png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
-        /// <summary>Loopback TCP server recording every connection (and the request line, when there is one).</summary>
+        /// <summary>
+        /// TCP server recording every connection (and the request line, when there is one). It listens on the local
+        /// network address of the computer when there is one, as a real remote server would be reached (systems may
+        /// treat the loopback address apart, e.g. bypass a proxy), otherwise on the loopback address.
+        /// </summary>
         private sealed class Canary : IDisposable
         {
-            private readonly TcpListener _listener = new TcpListener(IPAddress.Loopback, 0);
+            private readonly TcpListener _listener = new TcpListener(LocalAddress(), 0);
             private readonly ConcurrentQueue<string> _hits = new ConcurrentQueue<string>();
             private readonly Thread _thread;
             private volatile bool _stop;
 
             public int Port { get; }
+            public string Address => ((IPEndPoint)_listener.LocalEndpoint).Address.ToString();
+
+            private static IPAddress LocalAddress()
+            {
+                foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up || ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                    var a = ni.GetIPProperties().UnicastAddresses.Select(u => u.Address).FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(x));
+                    if (a != null) return a;
+                }
+                return IPAddress.Loopback;
+            }
             public List<string> Hits => _hits.Distinct().ToList();
             public void Clear() { while (_hits.TryDequeue(out _)) { } }
 
