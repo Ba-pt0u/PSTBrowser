@@ -117,6 +117,12 @@ enregistrés dans l'index changent ; les fichiers sources ne sont pas modifiés.
 - Affichage des messages dans WebView2 (moteur Edge) en mode InPrivate, JavaScript désactivé, toutes les requêtes
   interceptées : seul le contenu du message, servi depuis la mémoire, est affiché ; images distantes et pixels
   de suivi bloqués ; politique CSP stricte ; clic sur un lien = demande de confirmation.
+- **Aucune requête réseau à l'affichage, prouvée en CI** : un serveur témoin sur la boucle locale enregistre toute
+  connexion pendant l'affichage d'un message hostile qui tente de le joindre de plus de 35 façons (images, `srcset`, CSS
+  `@import` / `url()` / `image-set`, polices, cadres, objets, vidéos, SVG, préchargements, redirection, `<base>`,
+  scripts, WebSocket, `fetch`…). Un affichage sans protection doit le joindre (sinon le test ne prouve rien) ; le
+  nettoyage du HTML seul, chaque barrière du lecteur seule (bloqueur de contenu, proxy inexistant) et la configuration
+  complète ne doivent le joindre aucune fois. Ce test tourne sur macOS (Apple Silicon, Intel) et Linux.
 - Les pièces jointes exécutables (`.exe`, `.js`, `.vbs`, `.lnk`, macros Office, `.app`, `.command`, `.pkg`, `.sh`,
   `.desktop`, `.AppImage`…) ne peuvent pas être ouvertes directement, seulement enregistrées. Les pièces jointes ouvertes sont copiées dans un dossier temporaire
   supprimé à la fermeture.
@@ -175,6 +181,10 @@ src/PstBrowser.Core   moteur, multiplateforme (.NET 10 ; Windows, macOS, Linux)
   Vendor/XstReader/   lecteur PST/OST (Ms-PL), modifié — voir les commentaires « PstBrowser modification »
   Vendor/RtfPipe/     conversion RTF → HTML (MIT), modifié — images EMF/WMF écartées (System.Drawing)
 src/PstBrowser.App    application Windows WPF + WebView2
+src/PstBrowser.Reader affichage sécurisé des messages sous macOS (WKWebView) et Linux (WebKitGTK), par le moteur web
+                      du système, sans dépendance (runtime Objective-C et GTK appelés directement) — base de la future
+                      interface macOS / Linux
+tests/PstBrowser.ReaderTest  preuve « aucune requête réseau » de ce lecteur (CI macOS Apple Silicon, Intel, Linux)
 src/PstBrowser.Cli    ligne de commande + tests de bout en bout (selftest)
 native/sqlite         sources SQLite (amalgamation) et scripts de compilation
 ```

@@ -5,6 +5,12 @@ Une version ne peut pas être publiée (`release.yml`) sans section datée dans 
 
 ## [Non publié]
 
+### Sécurité
+- **Nettoyage du HTML des messages renforcé** : adresses distantes sans guillemets, `srcset`, affiches de vidéo
+  (`poster`), images SVG (`href`, `xlink:href`), `@import` sans `url()`, `image-set()` et attributs `ping` sont
+  désormais neutralisés eux aussi. Sous Windows, WebView2 bloquait déjà ces requêtes : c'est une protection
+  supplémentaire, indépendante du moteur d'affichage.
+
 ### Nouveautés
 - **Dossier d'affaire portable** : un dossier d'affaire peut être déplacé ou copié (autre lecteur, autre poste,
   Windows, macOS, Linux) sans réindexation.
@@ -15,6 +21,9 @@ Une version ne peut pas être publiée (`release.yml`) sans section datée dans 
   - Sécurité : une source n'est rattachée qu'à un fichier de même taille (dossier MSG : fichiers indexés présents) ;
     un fichier homonyme différent est refusé. Les fichiers sources ne sont jamais modifiés.
   - Ligne de commande : `relocate` (avec `--essai` pour un aperçu) ; `sources` signale les sources introuvables.
+- **Préparation de l'application macOS / Linux** : lecteur de messages sécurisé fondé sur le moteur web du système
+  (WKWebView, WebKitGTK), avec un test automatique prouvant qu'aucune requête réseau n'est faite à l'affichage d'un
+  message hostile. Il n'est pas encore intégré à une interface : l'application reste réservée à Windows.
 
 ## [1.3.0] - 2026-10-20
 
