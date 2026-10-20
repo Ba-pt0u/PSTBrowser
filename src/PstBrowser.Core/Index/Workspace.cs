@@ -50,7 +50,7 @@ namespace PstBrowser.Core.Index
     /// A case workspace: a folder holding the SQLite index (metadata + full-text) of a set of PST/MSG sources.
     /// The sources themselves are only ever opened read-only.
     /// </summary>
-    public sealed class Workspace : IDisposable
+    public sealed partial class Workspace : IDisposable
     {
         public const string DbFileName = "pstbrowser-index.db";
         public const int SchemaVersion = 3;
@@ -71,6 +71,7 @@ namespace PstBrowser.Core.Index
             Directory.CreateDirectory(folder);
             var ws = new Workspace(folder);
             ws.EnsureSchema();
+            ws.AutoRelocate();
             return ws;
         }
 

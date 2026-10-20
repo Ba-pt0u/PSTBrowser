@@ -181,6 +181,7 @@ namespace PstBrowser.Cli
             SyntheticCaseTests(work);
             Console.WriteLine("12. Analyse : tests unitaires (en-têtes, domaines, données sensibles, fils)");
             AnalysisUnitTests();
+            PortableCaseTests(work, src);
 
             Console.WriteLine(_failures == 0 ? "\nTOUS LES TESTS SONT PASSÉS" : $"\n{_failures} TEST(S) EN ÉCHEC");
             return _failures == 0 ? 0 : 3;

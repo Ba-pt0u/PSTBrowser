@@ -34,7 +34,7 @@ namespace PstBrowser.Cli
                 {
                     case "add":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             var added = ws.AddSources(args.Skip(2));
                             foreach (var s in added) Console.WriteLine($"+ {s.DisplayName}  →  boîte « {s.MailboxName} »");
                             Console.WriteLine($"{added.Count} source(s) ajoutée(s).");
@@ -42,7 +42,7 @@ namespace PstBrowser.Cli
                         }
                     case "index":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             var opt = new IndexerOptions();
                             if (args.Contains("--sha256")) opt.ComputeSha256 = true;
                             if (args.Contains("--no-attachments")) opt.IndexAttachments = false;
@@ -71,14 +71,41 @@ namespace PstBrowser.Cli
                         }
                     case "sources":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
-                            foreach (var s in ws.ListSources())
-                                Console.WriteLine($"[{s.Id}] {s.MailboxName} | {s.DisplayName} | {Format.Size(s.Size)} | {s.Status} | {s.IndexedCount}/{s.MessageCount} {(s.Sha256 != null ? "| SHA256 " + s.Sha256 : "")} {s.Error}");
+                            using var ws = OpenWorkspace(wsDir);
+                            var sources = ws.ListSources();
+                            foreach (var s in sources)
+                                Console.WriteLine($"[{s.Id}] {s.MailboxName} | {s.DisplayName} | {Format.Size(s.Size)} | {s.Status} | {s.IndexedCount}/{s.MessageCount} {(s.Sha256 != null ? "| SHA256 " + s.Sha256 : "")} {s.Error}"
+                                    + (s.FileMissing ? $"\n      INTROUVABLE : {s.Path}" : ""));
+                            int missing = sources.Count(s => s.FileMissing);
+                            if (missing > 0)
+                                Console.WriteLine($"{missing} source(s) introuvable(s) : indiquez leur nouvel emplacement avec « relocate » (une seule suffit si les autres ont été déplacées avec elle).");
                             return 0;
+                        }
+                    case "relocate":
+                        {
+                            var rest = args.Skip(2).Where(a => a != "--essai").ToList();
+                            if (rest.Count != 2) return Usage();
+                            bool dry = args.Contains("--essai");
+                            using var ws = OpenWorkspace(wsDir);
+                            RelocationResult r;
+                            if (long.TryParse(rest[0], out var sourceId))
+                            {
+                                var src = ws.GetSource(sourceId);
+                                if (src == null) { Console.Error.WriteLine($"Source {sourceId} inconnue (voir « sources »)."); return 2; }
+                                var (o, n) = Workspace.InferRelocation(src.Path, rest[1]);
+                                Console.WriteLine($"Dossier déplacé : {o}  →  {n}");
+                                r = ws.RelocateFrom(src, rest[1], dryRun: dry);
+                            }
+                            else r = ws.RelocateSources(rest[0], rest[1], dryRun: dry);
+                            foreach (var i in r.Items)
+                                Console.WriteLine($"[{i.Source.Id}] {i.Source.DisplayName} : {i.OutcomeLabel}\n      {i.Source.Path}\n   →  {i.NewPath}");
+                            Console.WriteLine(r.Items.Count == 0 ? "Aucune source sous cet ancien emplacement."
+                                : $"{r.Relocated} source(s) {(dry ? "retrouvable(s) (essai : rien n'a été modifié)" : "retrouvée(s)")}, {r.Failed} non retrouvée(s).");
+                            return r.Failed == 0 ? 0 : 2;
                         }
                     case "tree":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             foreach (var mb in ws.ListMailboxes())
                             {
                                 Console.WriteLine($"# {mb.Name} ({mb.MessageCount})");
@@ -89,7 +116,7 @@ namespace PstBrowser.Cli
                         }
                     case "search":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             var svc = new SearchService(ws);
                             var req = new SearchRequest { Query = args.Length > 2 ? args[2] : "", Limit = 50 };
                             for (int i = 3; i < args.Length; i++)
@@ -116,7 +143,7 @@ namespace PstBrowser.Cli
                         }
                     case "show":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var ms = new MessageService(ws);
                             string query = args.Length > 3 && !args[3].StartsWith("--") ? args[3] : null;
                             var v = ms.GetView(MessageRef.Parse(args[2]), query != null ? QueryParser.Parse(query).HighlightTerms : null, query);
@@ -137,7 +164,7 @@ namespace PstBrowser.Cli
                     case "attachments":
                         {
                             // Inventory of the attachments indexed in pass 3: status and SHA-256 of each file
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var db = ws.Open();
                             var st = db.Prepare(@"SELECT a.message_id, a.idx_path, a.name, a.size, a.status, a.sha256, a.text_len, a.error FROM attachments a ORDER BY a.message_id, a.idx_path");
                             var rows = new System.Collections.Generic.List<string[]>();
@@ -162,7 +189,7 @@ namespace PstBrowser.Cli
                     case "analyze":
                         {
                             // Header path, authentication, spoofing indications, dates, sensitive data and thread of one message
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var ms = new MessageService(ws);
                             var a = ms.GetAnalysis(MessageRef.Parse(args[2]));
                             var h = a.Live.Header;
@@ -183,7 +210,7 @@ namespace PstBrowser.Cli
                     case "sensitive":
                         {
                             // Sensitive data found in messages and attachments, masked values only
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var db = ws.Open();
                             var st = db.Prepare(@"SELECT s.message_id, s.kind, s.masked, s.att_path, a.name, m.subject, m.date
                                                   FROM sensitive s JOIN messages m ON m.id=s.message_id LEFT JOIN attachments a ON a.message_id=s.message_id AND a.idx_path=s.att_path
@@ -209,7 +236,7 @@ namespace PstBrowser.Cli
                         }
                     case "lookalikes":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var db = ws.Open();
                             var st = db.Prepare("SELECT domain, resembles, kind, messages FROM lookalikes ORDER BY messages DESC");
                             while (st.Step()) Console.WriteLine($"{st.GetString(0)}  ressemble à  {st.GetString(1)}  ({st.GetString(2)}, {st.GetLong(3)} message(s))");
@@ -218,7 +245,7 @@ namespace PstBrowser.Cli
                         }
                     case "save-att":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var ms = new MessageService(ws);
                             ms.SaveAttachment(MessageRef.Parse(args[2]), int.Parse(args[3]), args[4]);
                             Console.WriteLine($"→ {args[4]} ({new FileInfo(args[4]).Length} octets)");
@@ -226,7 +253,7 @@ namespace PstBrowser.Cli
                         }
                     case "eml":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             using var ms = new MessageService(ws);
                             ms.ExportEml(MessageRef.Parse(args[2]), args[3]);
                             Console.WriteLine($"→ {args[3]}");
@@ -234,7 +261,7 @@ namespace PstBrowser.Cli
                         }
                     case "remove":
                         {
-                            using var ws = Workspace.OpenOrCreate(wsDir);
+                            using var ws = OpenWorkspace(wsDir);
                             ws.RemoveSource(long.Parse(args[2]));
                             Console.WriteLine("Source retirée de l'index (fichier non modifié).");
                             return 0;
@@ -260,6 +287,15 @@ namespace PstBrowser.Cli
             return 0;
         }
 
+        /// <summary>Opens the case folder and reports the sources found again after the case folder moved.</summary>
+        private static Workspace OpenWorkspace(string folder)
+        {
+            var ws = Workspace.OpenOrCreate(folder);
+            if (ws.AutoRelocation != null)
+                Console.Error.WriteLine($"Dossier d'affaire déplacé : {ws.AutoRelocation.Relocated} source(s) retrouvée(s) automatiquement à son nouvel emplacement.");
+            return ws;
+        }
+
         private static int Usage()
         {
             Console.WriteLine(@"pstbrowser-cli — moteur PstBrowser en ligne de commande (SQLite " + SqliteDb.Version + @")
@@ -272,7 +308,11 @@ namespace PstBrowser.Cli
   lookalikes <dossier-affaire>                                        domaines d'expéditeurs ressemblant à des domaines plus fréquents
   attachments <dossier-affaire> [--csv fichier.csv]                  inventaire des pièces jointes (statut, SHA-256)
   extract-file <fichier>                                             affiche le texte que l'extracteur lit dans un fichier
-  sources  <dossier-affaire>                                         liste les sources
+  sources  <dossier-affaire>                                         liste les sources (et celles introuvables)
+  relocate <dossier-affaire> <ancien-dossier> <nouveau-dossier> [--essai]
+                                                                     sources déplacées (autre lecteur, autre poste, Mac, Linux) : réécrit leurs chemins
+  relocate <dossier-affaire> <id-source> <nouveau-chemin-du-fichier> [--essai]
+                                                                     idem, en indiquant le nouvel emplacement d'une seule source : le dossier déplacé est déduit
   tree     <dossier-affaire>                                         arborescence des boîtes
   search   <dossier-affaire> ""requête"" [--sort champ[:asc|:desc]] [--dedup] [--att] [--limit N] [--csv fichier.csv]
   show     <dossier-affaire> <id[-pj-pj]> [""termes""] [--html fichier.html]

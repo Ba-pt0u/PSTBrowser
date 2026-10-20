@@ -94,6 +94,20 @@ et une empreinte SHA-256. L'extraction s'exécute dans un **processus séparé**
 délai maximal par fichier : un document corrompu ne peut pas bloquer ni faire planter l'application. L'étape est reprenable.
 Les macros ne sont jamais exécutées ; aucun document n'est ouvert dans une application externe pour l'extraction.
 
+### Dossier d'affaire portable
+
+Un dossier d'affaire peut être déplacé ou copié (autre lecteur, autre poste, Windows ↔ Mac ↔ Linux) sans réindexation :
+- **dossier d'affaire déplacé avec ses sources** (sources rangées dedans ou à côté, ex. `Affaires\Affaire-7` et
+  `Affaires\Export`) : elles sont retrouvées automatiquement à l'ouverture ;
+- **sources déplacées** (scellé rebranché sur une autre lettre de lecteur, disque monté sous `/Volumes/…`) : à l'ouverture,
+  PST Browser signale les sources introuvables ; dans **Sources…**, **Retrouver…** demande le nouvel emplacement d'**une**
+  source, en déduit le dossier déplacé et retrouve en même temps toutes les sources déplacées avec elle (aperçu avant
+  application). Lettres de lecteur et séparateurs Windows sont convertis pour macOS / Linux, et inversement.
+
+Une source n'est rattachée à un fichier que s'il a **la même taille** qu'à l'ajout (et, pour un dossier de fichiers MSG,
+si les fichiers indexés s'y trouvent) : un fichier homonyme différent n'est jamais pris à sa place. Seuls les chemins
+enregistrés dans l'index changent ; les fichiers sources ne sont pas modifiés.
+
 ## Confidentialité et sécurité
 
 - Aucune connexion réseau : pas de télémétrie, pas de mise à jour automatique, pas de service en ligne.
@@ -141,6 +155,9 @@ pstbrowser-cli analyze D:\Affaire1 1234                              (en-têtes,
 pstbrowser-cli sensitive D:\Affaire1 --csv sensibles.csv             (détections, valeurs masquées)
 pstbrowser-cli lookalikes D:\Affaire1                                (domaines ressemblant à des domaines plus fréquents)
 pstbrowser-cli eml     D:\Affaire1 12345 message.eml
+pstbrowser-cli sources D:\Affaire1                                  (sources, et celles introuvables)
+pstbrowser-cli relocate D:\Affaire1 E:\Export /Volumes/Scelle-42/Export --essai   (sources déplacées : aperçu, puis sans --essai)
+pstbrowser-cli relocate D:\Affaire1 3 /Volumes/Scelle-42/Export/Dupont/dupont.pst  (d'après le nouvel emplacement de la source 3)
 ```
 
 ## Architecture

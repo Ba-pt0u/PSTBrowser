@@ -187,6 +187,14 @@ namespace PstBrowser.App
                 SetStatus("Dossier d'affaire prêt : " + folder);
             }
             else SetStatus("Dossier d'affaire : " + folder);
+            if (ws.AutoRelocation != null)
+                SetStatus($"Dossier d'affaire déplacé : {ws.AutoRelocation.Relocated} source(s) retrouvée(s) automatiquement à son nouvel emplacement.");
+            int missing = ws.ListSources().Count(s => s.FileMissing);
+            if (missing > 0 && MessageBox.Show(this,
+                    $"{missing} source(s) de ce dossier d'affaire sont introuvables (déplacées, autre lecteur, disque non branché…).\n\n" +
+                    "Indiquer leur nouvel emplacement maintenant ? Il suffit d'en retrouver une : les sources déplacées avec elle sont retrouvées en même temps.",
+                    Title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                Sources_Click(null, null);
             if (ws.HasPendingWork()) StartIndexing();
         }
 

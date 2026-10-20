@@ -3,6 +3,19 @@
 Les notes de chaque release GitHub reprennent la section de la version correspondante.
 Une version ne peut pas être publiée (`release.yml`) sans section datée dans ce fichier.
 
+## [Non publié]
+
+### Nouveautés
+- **Dossier d'affaire portable** : un dossier d'affaire peut être déplacé ou copié (autre lecteur, autre poste,
+  Windows, macOS, Linux) sans réindexation.
+  - Dossier d'affaire déplacé avec ses sources (rangées dedans ou à côté) : sources retrouvées automatiquement à l'ouverture.
+  - Sources déplacées : signalées à l'ouverture ; **Sources… > Retrouver…** demande le nouvel emplacement d'une seule
+    source et retrouve en même temps toutes celles déplacées avec elle, après un aperçu. Lettres de lecteur et
+    séparateurs Windows convertis pour macOS / Linux, et inversement.
+  - Sécurité : une source n'est rattachée qu'à un fichier de même taille (dossier MSG : fichiers indexés présents) ;
+    un fichier homonyme différent est refusé. Les fichiers sources ne sont jamais modifiés.
+  - Ligne de commande : `relocate` (avec `--essai` pour un aperçu) ; `sources` signale les sources introuvables.
+
 ## [1.3.0] - 2026-10-20
 
 ### Nouveautés — multiplateforme

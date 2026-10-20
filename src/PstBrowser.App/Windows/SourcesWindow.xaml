@@ -27,6 +27,8 @@
                            Text="Les fichiers de plus de 50 Mo, chiffrés ou d'un format non pris en charge sont signalés dans l'index mais leur contenu n'est pas lu. Les images scannées ne sont pas reconnues (pas d'OCR). Désactiver cette option accélère l'indexation."/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnRelocate" Content="Retrouver…" Style="{StaticResource ToolButton}" Click="Relocate_Click"
+                        ToolTip="Source déplacée (autre lecteur, autre poste, Mac, Linux) : indiquez son nouvel emplacement. Les autres sources déplacées avec elle sont retrouvées en même temps."/>
                 <Button Content="Réindexer" Style="{StaticResource ToolButton}" Click="Reindex_Click" ToolTip="Supprime l'index de la source sélectionnée et la réindexe entièrement"/>
                 <Button Content="Retirer du dossier" Style="{StaticResource ToolButton}" Click="Remove_Click" ToolTip="Retire la source de l'index (le fichier n'est pas supprimé)"/>
                 <Button Content="Copier la liste" Style="{StaticResource ToolButton}" Click="Copy_Click"/>
@@ -36,6 +38,15 @@
         <DataGrid x:Name="SourcesGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Extended"
                   HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEE" BorderBrush="{StaticResource BorderBrush}"
                   CellEditEnding="Grid_CellEditEnding" RowHeaderWidth="0">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Missing}" Value="True">
+                            <Setter Property="Foreground" Value="#B3261E"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Boîte" Binding="{Binding MailboxName, UpdateSourceTrigger=LostFocus}" Width="200"/>
                 <DataGridTextColumn Header="Fichier / dossier" Binding="{Binding DisplayName}" IsReadOnly="True" Width="210"/>

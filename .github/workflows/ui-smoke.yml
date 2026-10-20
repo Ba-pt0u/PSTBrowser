@@ -53,10 +53,16 @@ jobs:
           cp "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles/"*.msg "$RUNNER_TEMP/src/msg/"
           out/cli/pstbrowser-cli.exe add "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/src"
           out/cli/pstbrowser-cli.exe index "$RUNNER_TEMP/affaire"
+          # a second case whose source is moved after indexing (other drive, other computer…)
+          mkdir -p "$RUNNER_TEMP/scelle/A"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/enron.pst" "$RUNNER_TEMP/scelle/A/dupont.pst"
+          out/cli/pstbrowser-cli.exe add "$RUNNER_TEMP/affaire-deplacee" "$RUNNER_TEMP/scelle/A"
+          out/cli/pstbrowser-cli.exe index "$RUNNER_TEMP/affaire-deplacee" --no-attachments
+          mv "$RUNNER_TEMP/scelle/A" "$RUNNER_TEMP/scelle/B"
 
       - name: Test de l'interface
         shell: pwsh
-        run: ./tests/ui-smoke.ps1 -App out/app/PstBrowser.exe -Workspace "$env:RUNNER_TEMP\affaire" -OutDir "$env:RUNNER_TEMP\shots"
+        run: ./tests/ui-smoke.ps1 -App out/app/PstBrowser.exe -Workspace "$env:RUNNER_TEMP\affaire" -OutDir "$env:RUNNER_TEMP\shots" -MovedWorkspace "$env:RUNNER_TEMP\affaire-deplacee"
 
       - name: Publier les captures sur la branche ci-screenshots
         if: always()

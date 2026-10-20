@@ -2,11 +2,13 @@
 # starts the application on a prepared case workspace, drives it through UI Automation
 # (search, select a result, open an embedded message, search in attachment contents, native RTF message,
 # "Investigation" column view preset in settings.json, column chooser) and takes screenshots.
-# Also checks the attachment extraction worker of the application executable (PstBrowser.exe --extract-worker).
+# Also checks the attachment extraction worker of the application executable (PstBrowser.exe --extract-worker)
+# and, with -MovedWorkspace, a case folder whose source file was moved (prompt, "Retrouver…" in the Sources window).
 param(
     [Parameter(Mandatory)] [string] $App,
     [Parameter(Mandatory)] [string] $Workspace,
-    [Parameter(Mandatory)] [string] $OutDir
+    [Parameter(Mandatory)] [string] $OutDir,
+    [string] $MovedWorkspace
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
@@ -288,5 +290,49 @@ if (-not $failed -and $columnsChanged) {
     $saved = Get-Content $settingsFile -Raw | ConvertFrom-Json
     Log ("settings.json : ColumnPreset = " + $saved.ColumnPreset + ", " + @($saved.ListColumns).Count + " colonnes enregistrées")
     if ($saved.ColumnPreset -ne 'Standard') { Log "ÉCHEC : la vue choisie n'est pas enregistrée dans settings.json"; $failed = $true }
+}
+if (-not $failed -and $MovedWorkspace) {
+    Log "Dossier d'affaire dont la source a été déplacée"
+    $proc = Start-Process -FilePath $App -ArgumentList "`"$MovedWorkspace`"" -PassThru
+    try {
+        # the question is asked when the case folder opens, before indexing resumes
+        $box = $null
+        for ($i = 0; $i -lt 40 -and $null -eq $box; $i++) {
+            Start-Sleep 1
+            if ($proc.HasExited) { throw "L'application s'est arrêtée au démarrage (code $($proc.ExitCode))" }
+            foreach ($top in $AE::RootElement.FindAll($Scope::Children, (Cond $AE::ProcessIdProperty $proc.Id))) {
+                foreach ($w in @($top) + @($top.FindAll($Scope::Children, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Window))))) {
+                    $txt = $w.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Text))) |
+                           Where-Object { $_.Current.Name -like '*introuvables*' } | Select-Object -First 1
+                    if ($null -ne $txt) { $box = $w; Log ("  message : " + $txt.Current.Name) }
+                }
+            }
+        }
+        Expect ($null -ne $box) "à l'ouverture : source introuvable signalée, nouvel emplacement proposé"
+        Shot '7-source-introuvable'
+        $yes = $box.FindFirst($Scope::Descendants, (Cond $AE::AutomationIdProperty '6'))
+        $yes.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Start-Sleep 3
+        $dlg = TopWindow "Sources du dossier d'affaire"
+        Expect ($null -ne $dlg) "la fenêtre Sources s'ouvre"
+        $btn = $dlg.FindFirst($Scope::Descendants, (Cond $AE::AutomationIdProperty 'BtnRelocate'))
+        Expect ($null -ne $btn -and $btn.Current.IsEnabled) 'bouton « Retrouver… » disponible pour la source introuvable'
+        $rows = $dlg.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::DataItem)))
+        Expect ($rows.Count -ge 1) "source listée ($($rows.Count))"
+        Shot '7b-retrouver'
+        $dlg.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close(); Start-Sleep 1
+        Log 'SUCCÈS (source déplacée)'
+    }
+    catch {
+        Log ("ÉCHEC : " + $_.Exception.Message)
+        try { Shot '9-echec-deplacement' } catch { }
+        $failed = $true
+    }
+    finally {
+        if (-not $proc.HasExited) {
+            $proc.CloseMainWindow() | Out-Null
+            if (-not $proc.WaitForExit(10000)) { $proc.Kill() }
+        }
+    }
 }
 if ($failed) { exit 1 }

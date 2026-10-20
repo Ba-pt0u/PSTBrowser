@@ -23,6 +23,8 @@ namespace PstBrowser.App.Windows
             public string StatusText { get; set; }
             public string CountText { get; set; }
             public string Sha256 { get; set; }
+            public bool Missing { get; set; }
+            public SourceKind Kind { get; set; }
         }
 
         private bool _loading;
@@ -55,7 +57,10 @@ namespace PstBrowser.App.Windows
                 StatusText = s.FileMissing ? "introuvable" : StatusLabel(s.Status) + (string.IsNullOrEmpty(s.Error) ? "" : " : " + s.Error),
                 CountText = s.Status == "done" ? s.MessageCount.ToString("N0") : $"{s.IndexedCount:N0} / {s.MessageCount:N0}",
                 Sha256 = s.Sha256,
+                Missing = s.FileMissing,
+                Kind = s.Kind,
             }).ToList();
+            BtnRelocate.IsEnabled = ((IEnumerable<Row>)SourcesGrid.ItemsSource).Any(r => r.Missing);
         }
 
         public static string StatusLabel(string status) => status switch
@@ -99,6 +104,50 @@ namespace PstBrowser.App.Windows
             var rows = Selected();
             if (rows.Count == 0) return;
             RestartingIndexer(() => { foreach (var r in rows) AppServices.Workspace.ResetSource(r.Id); });
+        }
+
+        private void Relocate_Click(object sender, RoutedEventArgs e)
+        {
+            var all = (IEnumerable<Row>)SourcesGrid.ItemsSource;
+            var row = Selected().FirstOrDefault(r => r.Missing) ?? all.FirstOrDefault(r => r.Missing);
+            if (row == null) return;
+            var ws = AppServices.Workspace;
+            var source = ws.GetSource(row.Id);
+            string newPath;
+            if (row.Kind == SourceKind.MsgFolder)
+            {
+                var dlg = new Microsoft.Win32.OpenFolderDialog { Title = $"Nouvel emplacement du dossier « {row.DisplayName} »" };
+                if (dlg.ShowDialog(this) != true) return;
+                newPath = dlg.FolderName;
+            }
+            else
+            {
+                var ext = System.IO.Path.GetExtension(row.DisplayName);
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = $"Nouvel emplacement de « {row.DisplayName} »",
+                    FileName = row.DisplayName,
+                    Filter = $"{row.DisplayName}|{row.DisplayName}|Fichiers {ext}|*{ext}|Tous les fichiers|*.*",
+                };
+                if (dlg.ShowDialog(this) != true) return;
+                newPath = dlg.FileName;
+            }
+
+            // what would move, before changing anything
+            RelocationResult preview;
+            try { preview = ws.RelocateFrom(source, newPath, dryRun: true); }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            var found = preview.Items.Where(i => i.Outcome == RelocationOutcome.Relocated).ToList();
+            var notFound = preview.Items.Where(i => i.Outcome != RelocationOutcome.Relocated).ToList();
+            var sb = new StringBuilder();
+            if (found.Count == 0) sb.Append("Aucune source retrouvée à cet emplacement.");
+            else sb.Append($"{found.Count} source(s) retrouvée(s) :\n").Append(string.Join("\n", found.Take(12).Select(i => "  • " + i.Source.DisplayName))).Append(found.Count > 12 ? "\n  …" : "");
+            if (notFound.Count > 0)
+                sb.Append($"\n\nNon retrouvée(s) :\n").Append(string.Join("\n", notFound.Take(8).Select(i => $"  • {i.Source.DisplayName} — {i.OutcomeLabel}")));
+            if (found.Count == 0) { MessageBox.Show(this, sb.ToString(), Title, MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            sb.Append("\n\nLes chemins enregistrés dans le dossier d'affaire seront mis à jour (les fichiers ne sont pas modifiés).");
+            if (MessageBox.Show(this, sb.ToString(), Title, MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            RestartingIndexer(() => ws.RelocateFrom(source, newPath));
         }
 
         private void RestartingIndexer(Action action, bool reload = true)
