@@ -121,8 +121,9 @@ enregistrés dans l'index changent ; les fichiers sources ne sont pas modifiés.
   connexion pendant l'affichage d'un message hostile qui tente de le joindre de plus de 35 façons (images, `srcset`, CSS
   `@import` / `url()` / `image-set`, polices, cadres, objets, vidéos, SVG, préchargements, redirection, `<base>`,
   scripts, WebSocket, `fetch`…). Un affichage sans protection doit le joindre (sinon le test ne prouve rien) ; le
-  nettoyage du HTML seul, chaque barrière du lecteur seule (bloqueur de contenu, proxy inexistant) et la configuration
-  complète ne doivent le joindre aucune fois. Ce test tourne sur macOS (Apple Silicon, Intel) et Linux.
+  nettoyage du HTML seul, le bloqueur de contenu seul (scripts actifs), le proxy inexistant seul (vérifiable sous Linux
+  seulement : macOS ne l'applique pas aux adresses du réseau local) et la configuration complète ne doivent le joindre
+  aucune fois. Ce test tourne sur macOS (Apple Silicon, Intel) et Linux.
 - Les pièces jointes exécutables (`.exe`, `.js`, `.vbs`, `.lnk`, macros Office, `.app`, `.command`, `.pkg`, `.sh`,
   `.desktop`, `.AppImage`…) ne peuvent pas être ouvertes directement, seulement enregistrées. Les pièces jointes ouvertes sont copiées dans un dossier temporaire
   supprimé à la fermeture.

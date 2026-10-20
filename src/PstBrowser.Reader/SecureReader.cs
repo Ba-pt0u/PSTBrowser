@@ -28,11 +28,13 @@ namespace PstBrowser.Reader
 
     /// <summary>
     /// Displays an e-mail body with the web engine of the system (WKWebView on macOS, WebKitGTK on Linux) so that
-    /// nothing leaves the computer, whatever the message contains. Protection layers, each sufficient on its own:
+    /// nothing leaves the computer, whatever the message contains. Protection layers (1 and 3 are each proven
+    /// sufficient on their own by tests/PstBrowser.ReaderTest):
     ///  1. the HTML is sanitized by PstBrowser.Core (scripts, event handlers, remote URLs removed; strict CSP);
     ///  2. the page and its images are served from memory under pstb://pstbrowser.invalid/ (a scheme of our own);
     ///  3. a content blocker refuses every other URL before any connection (http, https, ws, ftp, file…);
-    ///  4. the network goes through a proxy that does not exist (connection refused, no DNS lookup);
+    ///  4. the network goes through a proxy that does not exist (connection refused, no DNS lookup) — proven on Linux;
+    ///     macOS accepts it but the tests show that it is not applied to local network addresses;
     ///  5. JavaScript is disabled, the profile is ephemeral (no cache, cookie or storage on disk), plugins, media,
     ///     WebGL, WebRTC and DNS prefetching are off;
     ///  6. navigation is refused: a click on a link only raises <see cref="ExternalLinkRequested"/>.
