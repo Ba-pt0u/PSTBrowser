@@ -295,20 +295,19 @@ if (-not $failed -and $MovedWorkspace) {
     Log "Dossier d'affaire dont la source a été déplacée"
     $proc = Start-Process -FilePath $App -ArgumentList "`"$MovedWorkspace`"" -PassThru
     try {
-        # the question is asked when the case folder opens, before indexing resumes
-        $box = $null
-        for ($i = 0; $i -lt 40 -and $null -eq $box; $i++) {
+        # the question is asked when the case folder opens, before indexing resumes (message box: "Yes" button = id 6)
+        $yesCond = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@((Cond $AE::ProcessIdProperty $proc.Id), (Cond $AE::AutomationIdProperty '6')))
+        $yes = $null
+        for ($i = 0; $i -lt 40 -and $null -eq $yes; $i++) {
             Start-Sleep 1
             if ($proc.HasExited) { throw "L'application s'est arrêtée au démarrage (code $($proc.ExitCode))" }
-            foreach ($top in $AE::RootElement.FindAll($Scope::Children, (Cond $AE::ProcessIdProperty $proc.Id))) {
-                foreach ($w in @($top) + @($top.FindAll($Scope::Children, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Window))))) {
-                    $txt = $w.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Text))) |
-                           Where-Object { $_.Current.Name -like '*introuvables*' } | Select-Object -First 1
-                    if ($null -ne $txt) { $box = $w; Log ("  message : " + $txt.Current.Name) }
-                }
-            }
+            $yes = $AE::RootElement.FindFirst($Scope::Descendants, $yesCond)
         }
-        Expect ($null -ne $box) "à l'ouverture : source introuvable signalée, nouvel emplacement proposé"
+        Expect ($null -ne $yes) "à l'ouverture : une question est posée"
+        $box = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($yes)
+        $texts = @($box.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name }) -join ' '
+        Log ("  message : " + $texts)
+        Expect ($texts -like '*introuvables*') "source introuvable signalée, nouvel emplacement proposé"
         Shot '7-source-introuvable'
         $yes = $box.FindFirst($Scope::Descendants, (Cond $AE::AutomationIdProperty '6'))
         $yes.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
