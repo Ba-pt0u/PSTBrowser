@@ -309,9 +309,13 @@ if (-not $failed -and $MovedWorkspace) {
         Log ("  message : " + $texts)
         Expect ($texts -like '*introuvables*') "source introuvable signalée, nouvel emplacement proposé"
         Shot '7-source-introuvable'
+        # "Yes" is the default button: Invoke when the button exposes it, otherwise Enter in the dialog (in the foreground)
+        $btnYes = $box.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button))) |
+                  Where-Object { $_.Current.Name -in @('Yes', 'Oui', '&Yes', '&Oui') } | Select-Object -First 1
+        Log ("  bouton : " + $(if ($btnYes) { $btnYes.Current.Name + ' / ' + $btnYes.Current.ClassName } else { 'introuvable, ' + $yes.Current.ControlType.ProgrammaticName + ' / ' + $yes.Current.ClassName }))
         $pattern = $null
-        if ($yes.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
-        else { $yes.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }
+        if ($null -ne $btnYes -and $btnYes.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
+        else { [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }
         Start-Sleep 3
         $dlg = TopWindow "Sources du dossier d'affaire"
         Expect ($null -ne $dlg) "la fenêtre Sources s'ouvre"
