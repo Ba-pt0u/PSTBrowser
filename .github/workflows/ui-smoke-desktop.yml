@@ -4,7 +4,7 @@ name: UI smoke test (macOS / Linux)
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: ['**']
     paths:
       - 'src/**'
       - 'tests/**'
