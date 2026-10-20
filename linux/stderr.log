@@ -1,0 +1,6 @@
+
+(PstBrowser:4020): dbind-WARNING **: 13:56:46.252: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+
+** (PstBrowser:4020): WARNING **: 13:56:46.543: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
