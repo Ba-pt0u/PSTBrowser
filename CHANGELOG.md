@@ -3,7 +3,7 @@
 Les notes de chaque release GitHub reprennent la section de la version correspondante.
 Une version ne peut pas être publiée (`release.yml`) sans section datée dans ce fichier.
 
-## [Non publié]
+## [1.3.0] - 2026-10-20
 
 ### Nouveautés — multiplateforme
 - **Outil en ligne de commande pour macOS** (Apple Silicon et Intel, macOS 12 ou plus récent) **et Linux x64**
@@ -17,6 +17,13 @@ Une version ne peut pas être publiée (`release.yml`) sans section datée dans 
   adapté aux disques réseau est désormais utilisé, comme sous Windows.
 - Pièces jointes exécutables propres à macOS et Linux (`.app`, `.command`, `.pkg`, `.dmg`, `.sh`, `.desktop`,
   `.AppImage`…) : jamais ouvertes directement, seulement enregistrables.
+
+### À savoir
+- L'application avec interface graphique reste réservée à Windows pour l'instant ; macOS et Linux disposent de
+  l'outil en ligne de commande, qui lit et produit les mêmes dossiers d'affaire.
+- macOS : l'exécutable est signé « ad hoc » mais pas notarié par Apple. Après vérification de l'empreinte, lever le
+  blocage une fois avec `xattr -d com.apple.quarantine pstbrowser-cli`.
+- Sur un Mac Apple Silicon, prendre la version `arm64` : la version Intel exécutée sous Rosetta 2 peut se bloquer.
 
 ## [1.2.0] - 2026-10-19
 
