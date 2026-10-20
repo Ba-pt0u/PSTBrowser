@@ -309,8 +309,9 @@ if (-not $failed -and $MovedWorkspace) {
         Log ("  message : " + $texts)
         Expect ($texts -like '*introuvables*') "source introuvable signalée, nouvel emplacement proposé"
         Shot '7-source-introuvable'
-        $yes = $box.FindFirst($Scope::Descendants, (Cond $AE::AutomationIdProperty '6'))
-        $yes.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        $pattern = $null
+        if ($yes.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
+        else { $yes.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }
         Start-Sleep 3
         $dlg = TopWindow "Sources du dossier d'affaire"
         Expect ($null -ne $dlg) "la fenêtre Sources s'ouvre"
