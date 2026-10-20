@@ -23,7 +23,9 @@ Une version ne peut pas être publiée (`release.yml`) sans section datée dans 
   - Ligne de commande : `relocate` (avec `--essai` pour un aperçu) ; `sources` signale les sources introuvables.
 - **Préparation de l'application macOS / Linux** : lecteur de messages sécurisé fondé sur le moteur web du système
   (WKWebView, WebKitGTK), avec un test automatique prouvant qu'aucune requête réseau n'est faite à l'affichage d'un
-  message hostile. Il n'est pas encore intégré à une interface : l'application reste réservée à Windows.
+  message hostile, et interface Avalonia reprenant les fonctions de l'application Windows (dossier d'affaire,
+  recherche, lecture, analyse, sources, exports), testée en CI sur macOS Apple Silicon, Intel et Linux. Elle n'est pas
+  encore distribuée (paquets macOS et Linux à venir) : l'application avec interface reste réservée à Windows.
 
 ## [1.3.0] - 2026-10-20
 

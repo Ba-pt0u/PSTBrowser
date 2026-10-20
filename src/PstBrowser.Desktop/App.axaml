@@ -1,6 +1,7 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="PstBrowser.Desktop.App"
+             Name="PST Browser"
              RequestedThemeVariant="Light">
     <Application.Resources>
         <SolidColorBrush x:Key="AccentBrush" Color="#1F5FAD"/>

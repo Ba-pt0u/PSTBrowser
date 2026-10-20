@@ -182,6 +182,8 @@ src/PstBrowser.Core   moteur, multiplateforme (.NET 10 ; Windows, macOS, Linux)
   Vendor/XstReader/   lecteur PST/OST (Ms-PL), modifié — voir les commentaires « PstBrowser modification »
   Vendor/RtfPipe/     conversion RTF → HTML (MIT), modifié — images EMF/WMF écartées (System.Drawing)
 src/PstBrowser.App    application Windows WPF + WebView2
+src/PstBrowser.Desktop application macOS / Linux (Avalonia) : mêmes fonctions, lecteur sécurisé natif intégré ;
+                      `--ui-smoke` : test de l'interface (tests/ui-smoke-desktop.sh, CI macOS Apple Silicon, Intel, Linux)
 src/PstBrowser.Reader affichage sécurisé des messages sous macOS (WKWebView) et Linux (WebKitGTK), par le moteur web
                       du système, sans dépendance (runtime Objective-C et GTK appelés directement) — base de la future
                       interface macOS / Linux
