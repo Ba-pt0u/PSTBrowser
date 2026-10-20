@@ -46,7 +46,7 @@ $verify = [System.Collections.Generic.List[string]]::new()
 $verify.Add('Vérification : `Get-FileHash .\PstBrowser.exe -Algorithm SHA256` (Windows)' + $(if ($mac -or $files -contains 'pstbrowser-cli-linux-x64.tar.gz') { ', `shasum -a 256 -c SHA256SUMS.txt --ignore-missing` (macOS, Linux).' } else { '.' }))
 if ($Attested) {
     $verify.Add('')
-    $verify.Add("Chaque fichier porte une attestation de provenance signée (Sigstore) qui prouve qu'il a été compilé par GitHub Actions à partir de ce dépôt : ``gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser` (GitHub CLI)`.")
+    $verify.Add("Chaque fichier porte une attestation de provenance signée (Sigstore) qui prouve qu'il a été compilé par GitHub Actions à partir de ce dépôt : ``gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser`` (GitHub CLI).")
 }
 
 $notes = @"
