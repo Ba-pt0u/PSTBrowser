@@ -3,7 +3,7 @@
 Les notes de chaque release GitHub reprennent la section de la version correspondante.
 Une version ne peut pas être publiée (`release.yml`) sans section datée dans ce fichier.
 
-## [Non publié]
+## [1.4.0] - 2026-11-08
 
 ### Sécurité
 - **Nettoyage du HTML des messages renforcé** : adresses distantes sans guillemets, `srcset`, affiches de vidéo
