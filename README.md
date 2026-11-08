@@ -26,12 +26,22 @@ Visualiseur **hors ligne** de fichiers **PST, OST et MSG**, conçu pour parcouri
 
 ## Utilisation
 
-1. Téléchargez `PstBrowser.exe` dans les [Releases](../../releases) (exécutable unique, sans installation,
-   sans droits administrateur ; Windows 10/11 x64). Vérifiez son empreinte avec `SHA256SUMS.txt`.
+1. Téléchargez l'application dans les [Releases](../../releases) et vérifiez son empreinte avec `SHA256SUMS.txt` :
+   - **Windows 10/11 x64** : `PstBrowser.exe` (exécutable unique, sans installation, sans droits administrateur) ;
+   - **macOS 12 ou plus récent** : `PstBrowser-macos-arm64.zip` (Apple Silicon) ou `PstBrowser-macos-x64.zip` (Intel).
+     Décompressez, glissez « PST Browser » dans Applications. L'application est signée « ad hoc » mais pas notariée
+     par Apple (cela demanderait un compte développeur payant) : au premier lancement, macOS refuse de l'ouvrir.
+     Levez ce blocage une fois avec `xattr -dr com.apple.quarantine "/Applications/PST Browser.app"` (ou clic droit >
+     Ouvrir ; sur macOS 15 : Réglages Système > Confidentialité et sécurité > Ouvrir quand même). En parc géré
+     (MDM), la DSI peut déployer l'application directement ;
+   - **Linux x64** : `sudo apt install ./pstbrowser-linux-amd64.deb` (Debian 12, Ubuntu 22.04 et suivantes) ou
+     `sudo dnf install ./pstbrowser-linux-x86_64.rpm` (Fedora…) : le moteur d'affichage WebKitGTK est installé avec.
+     Sans droits administrateur : `pstbrowser-linux-x64.tar.gz`, puis `./pstbrowser/install.sh` (WebKitGTK doit
+     déjà être présent). Commande `pstbrowser`, entrée dans le menu des applications.
 2. **Nouveau dossier d'affaire** : choisissez un dossier (idéalement sur un volume chiffré) qui contiendra l'index.
 3. **Ajouter des fichiers / un dossier** (ou glisser-déposer) : PST, OST, MSG. L'indexation démarre aussitôt ;
    l'arborescence est consultable après quelques secondes, la recherche plein texte se complète au fil de l'eau.
-4. Recherchez (Ctrl+F), parcourez les dossiers, ouvrez les messages et leurs pièces jointes.
+4. Recherchez (Ctrl+F, ⌘F sur Mac), parcourez les dossiers, ouvrez les messages et leurs pièces jointes.
 
 ### Syntaxe de recherche
 
@@ -208,11 +218,21 @@ native/build-sqlite-macos.sh        # bibliothèque universelle Apple Silicon + 
 dotnet publish src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -o out
 ```
 
+Application et paquets macOS / Linux (sur un Mac pour l'application macOS ; `dpkg-deb` et `rpmbuild` pour Linux) :
+
+```
+packaging/macos/build-app.sh osx-arm64 1.4.0 dist     # PstBrowser-macos-arm64.zip (signature ad hoc)
+packaging/linux/build-packages.sh 1.4.0 dist          # .deb, .rpm et archive .tar.gz
+```
+
 La CI (`.github/workflows/build.yml`) compile et teste à chaque push sous Windows, Linux, macOS Apple Silicon et
 macOS Intel. `.github/workflows/release.yml` (onglet Actions, « Run workflow » avec la version, ou tag
 `vX.Y.Z`) teste à nouveau les exécutables de chaque plateforme, puis publie la release avec les empreintes SHA-256
 et une **attestation de provenance** signée (Sigstore) pour chaque fichier, vérifiable avec
-`gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser`. L'option « Essai à blanc » fait tout sauf la publication.
+`gh attestation verify <fichier> --repo Ba-pt0u/PSTBrowser`. Avant publication, l'application macOS est
+décompressée puis testée (interface, lecteur) sur Mac Apple Silicon et Intel, le paquet .deb installé puis testé
+sous Ubuntu, et l'installation des paquets vérifiée sous Debian 12, Ubuntu 22.04 et Fedora.
+L'option « Essai à blanc » fait tout sauf la publication.
 
 ## Composants tiers
 

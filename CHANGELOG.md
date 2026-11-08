@@ -21,11 +21,22 @@ Une version ne peut pas être publiée (`release.yml`) sans section datée dans 
   - Sécurité : une source n'est rattachée qu'à un fichier de même taille (dossier MSG : fichiers indexés présents) ;
     un fichier homonyme différent est refusé. Les fichiers sources ne sont jamais modifiés.
   - Ligne de commande : `relocate` (avec `--essai` pour un aperçu) ; `sources` signale les sources introuvables.
-- **Préparation de l'application macOS / Linux** : lecteur de messages sécurisé fondé sur le moteur web du système
-  (WKWebView, WebKitGTK), avec un test automatique prouvant qu'aucune requête réseau n'est faite à l'affichage d'un
-  message hostile, et interface Avalonia reprenant les fonctions de l'application Windows (dossier d'affaire,
-  recherche, lecture, analyse, sources, exports), testée en CI sur macOS Apple Silicon, Intel et Linux. Elle n'est pas
-  encore distribuée (paquets macOS et Linux à venir) : l'application avec interface reste réservée à Windows.
+- **Application pour macOS et Linux** : les mêmes fonctions que sous Windows (dossier d'affaire, recherche, lecture,
+  analyse, sources, colonnes, exports, glisser-déposer).
+  - macOS 12 ou plus récent, Apple Silicon et Intel : application « PST Browser » (`.zip`), signée « ad hoc ».
+  - Linux x64 : paquets `.deb` (Debian 12, Ubuntu 22.04 et suivantes) et `.rpm` (Fedora…), qui installent aussi
+    l'outil en ligne de commande ; archive `.tar.gz` pour une installation sans droits administrateur.
+  - Les messages sont affichés par le moteur web du système (WKWebView sous macOS, WebKitGTK sous Linux) avec les
+    mêmes garanties que sous Windows : aucune requête réseau, prouvée par un test automatique sur un message hostile
+    qui tente de joindre un serveur témoin de plus de 35 façons ; scripts désactivés ; liens ouverts seulement
+    après confirmation.
+
+### À savoir
+- macOS : l'application n'est pas notariée par Apple. Au premier lancement, lever le blocage une fois :
+  `xattr -dr com.apple.quarantine "/Applications/PST Browser.app"` (ou clic droit > Ouvrir).
+- Linux : WebKitGTK 4.1 est nécessaire (installé automatiquement par les paquets `.deb` et `.rpm`). Les sessions
+  Wayland sont prises en charge par XWayland.
+- Windows : rien ne change, l'application reste `PstBrowser.exe` (WebView2).
 
 ## [1.3.0] - 2026-10-20
 
