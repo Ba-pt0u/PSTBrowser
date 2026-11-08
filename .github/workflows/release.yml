@@ -210,9 +210,117 @@ jobs:
           path: dist/*
           retention-days: 7
 
+  macos-app:
+    name: Application macOS ${{ matrix.label }}
+    needs: prepare
+    strategy:
+      matrix:
+        include:
+          - { rid: osx-arm64, runner: macos-latest, label: Apple Silicon }
+          - { rid: osx-x64, runner: macos-15-intel, label: Intel }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (bibliothèque universelle arm64 + x86_64)
+        run: native/build-sqlite-macos.sh
+
+      - name: Construire « PST Browser.app » (signature ad hoc)
+        run: packaging/macos/build-app.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }} dist
+
+      - name: Préparer un dossier d'affaire de test
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+          mkdir -p "$RUNNER_TEMP/src/msg"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/enron.pst" "$RUNNER_TEMP/src/michelle.lokay@enron.com.pst"
+          cp "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles/"*.msg "$RUNNER_TEMP/src/msg/"
+          dotnet build src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release
+          cli="dotnet src/PstBrowser.Cli/bin/Release/net10.0/pstbrowser-cli.dll"
+          $cli add "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/src"
+          $cli index "$RUNNER_TEMP/affaire"
+
+      - name: Test de l'interface depuis l'application décompressée
+        run: |
+          ditto -x -k dist/PstBrowser-macos-*.zip "$RUNNER_TEMP/install"
+          app="$RUNNER_TEMP/install/PST Browser.app"
+          codesign --verify --deep --strict "$app"
+          tools/watchdog.sh 900 tests/ui-smoke-desktop.sh "$app/Contents/MacOS/PstBrowser" "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/shots" tahoe
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-app-${{ matrix.rid }}
+          path: dist/*
+          retention-days: 7
+
+  linux-packages:
+    name: Paquets Linux (.deb, .rpm, archive)
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compiler SQLite (compatible glibc 2.28 et plus récente)
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src -u "$(id -u):$(id -g)"
+          quay.io/pypa/manylinux_2_28_x86_64 native/build-sqlite-linux.sh
+
+      - name: Construire les paquets
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends rpm
+          packaging/linux/build-packages.sh ${{ needs.prepare.outputs.version }} dist
+
+      - name: Installer le paquet .deb (dépendances comprises)
+        run: |
+          sudo apt-get install -y -q --no-install-recommends ./dist/pstbrowser-linux-amd64.deb xvfb xauth imagemagick
+          pstbrowser-cli selftest-unit
+
+      - name: Installation sur Debian 12, Ubuntu 22.04 et Fedora
+        run: |
+          for image in debian:12 ubuntu:22.04; do
+            docker run --rm -v "$PWD/dist:/dist" $image bash -c \
+              "apt-get update -q >/dev/null && apt-get install -y -q /dist/pstbrowser-linux-amd64.deb >/dev/null && pstbrowser-cli selftest-unit | tail -1"
+          done
+          docker run --rm -v "$PWD/dist:/dist" fedora:41 bash -c \
+            "dnf install -y -q /dist/pstbrowser-linux-x86_64.rpm >/dev/null && pstbrowser-cli selftest-unit | tail -1"
+
+      - name: Préparer un dossier d'affaire de test
+        run: |
+          git clone --depth 1 https://github.com/epfromer/pst-extractor.git "$RUNNER_TEMP/pst-extractor"
+          git clone --depth 1 https://github.com/Sicos1977/MSGReader.git "$RUNNER_TEMP/msgreader"
+          mkdir -p "$RUNNER_TEMP/src/msg"
+          cp "$RUNNER_TEMP/pst-extractor/src/__tests__/testdata/enron.pst" "$RUNNER_TEMP/src/michelle.lokay@enron.com.pst"
+          cp "$RUNNER_TEMP/msgreader/MsgReaderTests/SampleFiles/"*.msg "$RUNNER_TEMP/src/msg/"
+          dotnet build src/PstBrowser.Cli/PstBrowser.Cli.csproj -c Release
+          cli="dotnet src/PstBrowser.Cli/bin/Release/net10.0/pstbrowser-cli.dll"
+          $cli add "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/src"
+          $cli index "$RUNNER_TEMP/affaire"
+
+      - name: Test de l'interface depuis l'application installée
+        run: >
+          tools/watchdog.sh 900 xvfb-run -a -s "-screen 0 1440x900x24"
+          tests/ui-smoke-desktop.sh /usr/bin/pstbrowser "$RUNNER_TEMP/affaire" "$RUNNER_TEMP/shots" tahoe
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-packages-linux
+          path: dist/*
+          retention-days: 7
+
   publish:
     name: Publication
-    needs: [prepare, windows, macos, linux]
+    needs: [prepare, windows, macos, linux, macos-app, linux-packages]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -247,6 +355,8 @@ jobs:
             dist/PstBrowser.exe
             dist/pstbrowser-cli.exe
             dist/pstbrowser-cli-*.tar.gz
+            dist/PstBrowser-macos-*.zip
+            dist/pstbrowser-linux-*
 
       - name: Créer la release GitHub
         if: ${{ inputs.dry_run != true }}

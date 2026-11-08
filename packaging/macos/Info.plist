@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>PST Browser</string>
+    <key>CFBundleDisplayName</key>
+    <string>PST Browser</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.ba-pt0u.pstbrowser</string>
+    <key>CFBundleExecutable</key>
+    <string>PstBrowser</string>
+    <key>CFBundleIconFile</key>
+    <string>PstBrowser.icns</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>fr</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Visualiseur hors ligne de fichiers PST, OST et MSG</string>
+</dict>
+</plist>

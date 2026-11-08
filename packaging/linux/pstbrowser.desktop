@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PST Browser
+GenericName=Visualiseur PST, OST et MSG
+Comment=Consultation hors ligne de fichiers PST, OST et MSG (exports eDiscovery)
+Exec=pstbrowser %f
+Icon=pstbrowser
+Terminal=false
+Categories=Office;Email;
+Keywords=pst;ost;msg;outlook;ediscovery;
+StartupWMClass=PstBrowser
